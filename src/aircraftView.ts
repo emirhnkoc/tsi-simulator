@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { DEG, FlightModel } from './physics';
+import { DEG, FlightModel, clamp } from './physics';
 
 /** 1 sahne birimi = 40 m. Standart dönüş yarıçapı 100 kt'ta ~1 km, yani ~25 birim. */
 const WORLD_SCALE = 1 / 40;
@@ -7,82 +7,296 @@ const ALT = 14;
 const SKY = 0x8fb7dc;
 const TRAIL_MAX = 5000;
 
+// ---- Kontrol yüzeyleri (tamamı görsel; fizik modeli değişmez) ----
+const AILERON_MAX = 22; // °, tam yatış komutunda
+const ELEVATOR_MAX = 20; // °, dönüşteki back-pressure
+const RUDDER_MAX = 25; // °, tam rudder girdisinde
+const FLAP_MAX = 25; // °
+const FLAP_UP_KT = 85; // bu süratin altında flaplar kademesiz iner
+const FLAP_FULL_KT = 62;
+/** Kanat dihedral açısı. */
+const DIHEDRAL = 2.5;
+const TAN_D = Math.tan(DIHEDRAL * DEG);
+
 export type CamMode = 'chase' | 'top';
 
+/** İki nokta arasına çubuk (strudel, iniş takımı bacağı) yerleştirir. */
+function strut(a: THREE.Vector3, b: THREE.Vector3, r: number, mat: THREE.Material): THREE.Mesh {
+  const dir = b.clone().sub(a);
+  const mesh = new THREE.Mesh(new THREE.CylinderGeometry(r, r, dir.length(), 6), mat);
+  mesh.position.copy(a).addScaledVector(dir, 0.5);
+  mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir.normalize());
+  return mesh;
+}
+
+/** Gövde profili: [yarıçap, burundan uzaklık (0 = burun ucu)]. */
+const FUSELAGE: [number, number][] = [
+  [0.03, 0.0],
+  [0.19, 0.14],
+  [0.30, 0.38],
+  [0.40, 0.95],
+  [0.385, 1.25],
+  [0.42, 1.45],
+  [0.42, 2.35],
+  [0.34, 3.0],
+  [0.24, 3.9],
+  [0.14, 4.7],
+  [0.05, 5.2],
+];
+
+/** x ekseninde aynalı bir şekli, ±90° döndürüp X kalınlığını ortalayarak kuyruk yüzeyi yapar. */
+function extrudedPanel(shape: THREE.Shape, depth: number, mat: THREE.Material): THREE.Mesh {
+  const geo = new THREE.ExtrudeGeometry(shape, { depth, bevelEnabled: false });
+  geo.rotateY(-Math.PI / 2); // şekil +x -> +z (arka), kalınlık -x
+  geo.translate(depth / 2, 0, 0);
+  return new THREE.Mesh(geo, mat);
+}
+
 function buildAircraft() {
-  const g = new THREE.Group();
-  const white = new THREE.MeshStandardMaterial({ color: 0xf2f2f2, flatShading: true, roughness: 0.6 });
-  const red = new THREE.MeshStandardMaterial({ color: 0xc8202a, flatShading: true, roughness: 0.6 });
-  const dark = new THREE.MeshStandardMaterial({ color: 0x1d2733, flatShading: true, roughness: 0.3 });
-  const grey = new THREE.MeshStandardMaterial({ color: 0x555555, flatShading: true });
+  // group: konum + yaw (heading/sideslip) — body: pitch + bank
+  const group = new THREE.Group();
+  const body = new THREE.Group();
+  group.add(body);
 
-  // Gövde: burun -z yönünde
-  const fusGeo = new THREE.CylinderGeometry(0.22, 0.48, 4.2, 8);
-  fusGeo.rotateX(Math.PI / 2); // +y -> +z (ince kuyruk arkada)
+  const paint = (color: number, rough = 0.45) =>
+    new THREE.MeshStandardMaterial({ color, roughness: rough, metalness: 0.05 });
+  const white = paint(0xf2f3f5);
+  const red = paint(0xc8202a, 0.4);
+  const glass = new THREE.MeshStandardMaterial({ color: 0x16222e, roughness: 0.15, metalness: 0.35 });
+  const metal = new THREE.MeshStandardMaterial({ color: 0x6b7076, roughness: 0.35, metalness: 0.6 });
+  const dark = paint(0x22262b, 0.6);
+  const yellow = paint(0xf5c518, 0.5);
+  const tyre = new THREE.MeshStandardMaterial({ color: 0x14161a, roughness: 0.9 });
+  const navRed = new THREE.MeshStandardMaterial({ color: 0x3a0b0b, emissive: 0xff2222, emissiveIntensity: 1.6 });
+  const navGreen = new THREE.MeshStandardMaterial({ color: 0x0b3a12, emissive: 0x22ff44, emissiveIntensity: 1.6 });
+  const navWhite = new THREE.MeshStandardMaterial({ color: 0x3a3a3a, emissive: 0xffffff, emissiveIntensity: 1.1 });
+  const beaconMat = new THREE.MeshStandardMaterial({ color: 0x3a0b0b, emissive: 0xff1111, emissiveIntensity: 2 });
+
+  // ---- Gövde: lathe (dönel) profil, burun -z ----
+  const fusGeo = new THREE.LatheGeometry(
+    FUSELAGE.map(([r, y]) => new THREE.Vector2(r, y)),
+    20,
+  );
+  fusGeo.rotateX(Math.PI / 2); // +y -> +z
   const fus = new THREE.Mesh(fusGeo, white);
-  fus.position.z = 0.4;
-  g.add(fus);
+  fus.position.z = -2.6;
+  body.add(fus);
 
-  const cowl = new THREE.Mesh(new THREE.CylinderGeometry(0.48, 0.42, 0.7, 8).rotateX(Math.PI / 2), white);
-  cowl.position.z = -2.0;
-  g.add(cowl);
+  // Kuyruk konisi ucu
+  const tailCap = new THREE.Mesh(new THREE.SphereGeometry(0.055, 8, 6), white);
+  tailCap.position.set(0, 0, 2.6);
+  body.add(tailCap);
 
-  const spinner = new THREE.Mesh(new THREE.ConeGeometry(0.18, 0.4, 8).rotateX(-Math.PI / 2), red);
-  spinner.position.z = -2.55;
-  g.add(spinner);
+  // Kırmızı gövde şeridi (gövdeye oturan ince lathe bandı)
+  const stripe: THREE.Vector2[] = [
+    [0.408, 1.10],
+    [0.395, 1.30],
+    [0.428, 1.50],
+    [0.428, 2.40],
+    [0.373, 2.90],
+    [0.343, 3.10],
+  ].map(([r, y]) => new THREE.Vector2(r + 0.008, y));
+  const stripeGeo = new THREE.LatheGeometry(stripe, 20);
+  stripeGeo.rotateX(Math.PI / 2);
+  const stripeMesh = new THREE.Mesh(stripeGeo, red);
+  stripeMesh.position.z = -2.6;
+  body.add(stripeMesh);
+
+  // ---- Burun: spinner, pervane, hava girişi ----
+  const spinner = new THREE.Mesh(new THREE.ConeGeometry(0.20, 0.45, 12).rotateX(-Math.PI / 2), red);
+  spinner.position.z = -2.80;
+  body.add(spinner);
+
+  const intake = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.16, 0.10), dark);
+  intake.position.set(0, -0.15, -2.52);
+  body.add(intake);
 
   const prop = new THREE.Group();
-  const blade = new THREE.Mesh(new THREE.BoxGeometry(0.12, 1.9, 0.04), grey);
-  prop.add(blade);
-  prop.position.z = -2.45;
-  g.add(prop);
-
-  // Kabin camları
-  const cabin = new THREE.Mesh(new THREE.BoxGeometry(0.82, 0.45, 1.3), dark);
-  cabin.position.set(0, 0.32, -0.9);
-  g.add(cabin);
-
-  // Yüksek kanat
-  const wing = new THREE.Mesh(new THREE.BoxGeometry(7.4, 0.12, 1.0), white);
-  wing.position.set(0, 0.62, -0.75);
-  g.add(wing);
-  for (const s of [-1, 1]) {
-    const tip = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.14, 1.02), red);
-    tip.position.set(s * 3.5, 0.62, -0.75);
-    g.add(tip);
-    // Kanat dikmesi
-    const strutLen = 2.3;
-    const strut = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, strutLen, 5), grey);
-    strut.position.set(s * 1.25, 0.12, -0.7);
-    strut.rotation.z = s * 1.1;
-    g.add(strut);
-    // İniş takımı
-    const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.9, 5), grey);
-    leg.position.set(s * 0.55, -0.62, -0.5);
-    leg.rotation.z = s * 0.6;
-    g.add(leg);
-    const wheel = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 0.12, 10).rotateZ(Math.PI / 2), dark);
-    wheel.position.set(s * 0.82, -1.0, -0.5);
-    g.add(wheel);
+  prop.position.z = -2.58;
+  for (const s of [1, -1]) {
+    const bladeGroup = new THREE.Group();
+    bladeGroup.rotation.z = s === 1 ? 0 : Math.PI;
+    const blade = new THREE.Mesh(new THREE.BoxGeometry(0.15, 1.56, 0.045), dark);
+    blade.position.y = 0.78;
+    bladeGroup.add(blade);
+    const tip = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.18, 0.05), yellow);
+    tip.position.y = 1.47;
+    bladeGroup.add(tip);
+    prop.add(bladeGroup);
   }
-  const noseWheel = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, 0.1, 10).rotateZ(Math.PI / 2), dark);
-  noseWheel.position.set(0, -0.85, -2.0);
-  g.add(noseWheel);
+  body.add(prop);
 
-  // Kuyruk
-  const hstab = new THREE.Mesh(new THREE.BoxGeometry(2.6, 0.07, 0.65), white);
-  hstab.position.set(0, 0.15, 2.3);
-  g.add(hstab);
-  const fin = new THREE.Mesh(new THREE.BoxGeometry(0.07, 1.0, 0.75), red);
-  fin.position.set(0, 0.65, 2.3);
-  g.add(fin);
+  const propDisc = new THREE.Mesh(
+    new THREE.CircleGeometry(0.8, 20),
+    new THREE.MeshBasicMaterial({ color: 0xcdd4da, transparent: true, opacity: 0.22, side: THREE.DoubleSide, depthWrite: false }),
+  );
+  propDisc.position.z = -2.57;
+  body.add(propDisc);
 
-  // Gövde şeridi
-  const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.08, 3.0), red);
-  stripe.position.set(0, -0.05, 0.4);
-  g.add(stripe);
+  // ---- Kabin camları ----
+  const canopy = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.26, 1.10), glass);
+  canopy.position.set(0, 0.40, -0.85);
+  body.add(canopy);
+  const windshield = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.05, 0.46), glass);
+  windshield.position.set(0, 0.43, -1.52);
+  windshield.rotation.x = -0.49;
+  body.add(windshield);
 
-  return { group: g, prop };
+  // ---- Kanat: iki yarı (uçlarda dihedral), aileron + flap hareketli ----
+  const wingY = (x: number) => 0.63 + Math.abs(x) * TAN_D;
+
+  /** Yarı kanat: gövdeye x=0'dan bağlı, uca doğru 3.95 birim. */
+  const buildWingHalf = (s: 1 | -1) => {
+    const sh = new THREE.Shape();
+    // CCW sırası: hücum kenarı -> uç -> arka kenar (sağ için +x, sol aynalanır)
+    if (s === 1) {
+      sh.moveTo(0, -0.56);
+      sh.lineTo(3.55, -0.56);
+      sh.quadraticCurveTo(3.95, -0.50, 3.95, 0);
+      sh.quadraticCurveTo(3.95, 0.50, 3.55, 0.56);
+      sh.lineTo(0, 0.56);
+    } else {
+      sh.moveTo(0, 0.56);
+      sh.lineTo(-3.55, 0.56);
+      sh.quadraticCurveTo(-3.95, 0.50, -3.95, 0);
+      sh.quadraticCurveTo(-3.95, -0.50, -3.55, -0.56);
+      sh.lineTo(0, -0.56);
+    }
+    sh.closePath();
+    const geo = new THREE.ExtrudeGeometry(sh, { depth: 0.13, bevelEnabled: false });
+    geo.rotateX(Math.PI / 2); // şekil +y -> +z (arka), kalınlık y'de ortalanır
+    geo.translate(0, 0.065, 0);
+
+    const g = new THREE.Group();
+    g.position.set(0, 0.63, -0.50);
+    g.rotation.z = s * DIHEDRAL * DEG;
+    g.add(new THREE.Mesh(geo, white));
+
+    // Kontrol yüzeyi: menteşe kanat arka kenarında (yerel z=0.50)
+    const surface = (xHinge: number, span: number, chord: number, thick: number): THREE.Group => {
+      const pivot = new THREE.Group();
+      const mesh = new THREE.Mesh(new THREE.BoxGeometry(span, thick, chord), white);
+      mesh.position.set((s * span) / 2, 0, chord / 2);
+      pivot.add(mesh);
+      pivot.position.set(s * xHinge, 0, 0.50);
+      return pivot;
+    };
+    const aileron = surface(1.85, 1.55, 0.34, 0.085);
+    const flap = surface(0.30, 1.35, 0.36, 0.095);
+    g.add(aileron, flap);
+
+    // Uç: kırmızı boya + seyrüsefer lambası (sol kırmızı, sağ yeşil)
+    const cap = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.145, 0.80), red);
+    cap.position.set(s * 3.78, 0, 0);
+    g.add(cap);
+    const nav = new THREE.Mesh(new THREE.SphereGeometry(0.05, 8, 6), s < 0 ? navRed : navGreen);
+    nav.position.set(s * 3.96, 0.02, -0.10);
+    g.add(nav);
+
+    return { group: g, aileron, flap };
+  };
+
+  const wingR = buildWingHalf(1);
+  const wingL = buildWingHalf(-1);
+  body.add(wingR.group, wingL.group);
+
+  // Kanat dikmeleri
+  for (const s of [-1, 1]) {
+    body.add(
+      strut(
+        new THREE.Vector3(s * 0.30, -0.30, -0.55),
+        new THREE.Vector3(s * 1.30, wingY(1.30) - 0.065, -0.55),
+        0.035,
+        metal,
+      ),
+    );
+  }
+
+  // ---- İniş takımı ----
+  for (const s of [-1, 1]) {
+    body.add(
+      strut(new THREE.Vector3(s * 0.40, -0.28, -0.25), new THREE.Vector3(s * 0.93, -1.02, -0.32), 0.045, metal),
+    );
+    const wheel = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.22, 0.13, 12).rotateZ(Math.PI / 2), tyre);
+    wheel.position.set(s * 0.95, -1.10, -0.32);
+    body.add(wheel);
+    const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.075, 0.075, 0.15, 8).rotateZ(Math.PI / 2), metal);
+    hub.position.copy(wheel.position);
+    body.add(hub);
+  }
+  body.add(strut(new THREE.Vector3(0, -0.30, -1.80), new THREE.Vector3(0, -1.02, -1.85), 0.04, metal));
+  const noseWheel = new THREE.Mesh(new THREE.CylinderGeometry(0.17, 0.17, 0.11, 12).rotateZ(Math.PI / 2), tyre);
+  noseWheel.position.set(0, -1.10, -1.85);
+  body.add(noseWheel);
+  const noseHub = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.13, 8).rotateZ(Math.PI / 2), metal);
+  noseHub.position.copy(noseWheel.position);
+  body.add(noseHub);
+
+  // ---- Kuyruk: yatay stabilize + elevatör ----
+  const hstab = new THREE.Mesh(new THREE.BoxGeometry(2.85, 0.075, 0.64), white);
+  hstab.position.set(0, 0.10, 2.32);
+  body.add(hstab);
+
+  const elevatorPivot = new THREE.Group();
+  elevatorPivot.position.set(0, 0.10, 2.58);
+  const elevator = new THREE.Mesh(new THREE.BoxGeometry(2.72, 0.055, 0.32), white);
+  elevator.position.set(0, 0, 0.16);
+  elevatorPivot.add(elevator);
+  body.add(elevatorPivot);
+
+  // ---- Dikey stabilize + rudder ----
+  const finShape = new THREE.Shape();
+  finShape.moveTo(0, 0);
+  finShape.lineTo(0.95, 0);
+  finShape.lineTo(0.95, 1.02);
+  finShape.lineTo(0.55, 1.02);
+  finShape.closePath();
+  const fin = extrudedPanel(finShape, 0.07, white);
+  fin.position.set(0, 0.15, 1.95);
+  body.add(fin);
+
+  const dorsalShape = new THREE.Shape();
+  dorsalShape.moveTo(0, 0);
+  dorsalShape.lineTo(0.5, 0);
+  dorsalShape.lineTo(0, 0.30);
+  dorsalShape.closePath();
+  const dorsal = extrudedPanel(dorsalShape, 0.05, white);
+  dorsal.position.set(0, 0.18, 1.70);
+  body.add(dorsal);
+
+  const rudderPivot = new THREE.Group();
+  rudderPivot.position.set(0, 0.15, 2.90);
+  const rudderShape = new THREE.Shape();
+  rudderShape.moveTo(0, 0);
+  rudderShape.lineTo(0.32, 0);
+  rudderShape.lineTo(0.30, 1.0);
+  rudderShape.lineTo(0, 1.02);
+  rudderShape.closePath();
+  const rudder = extrudedPanel(rudderShape, 0.06, white);
+  rudderPivot.add(rudder);
+  const tailNav = new THREE.Mesh(new THREE.SphereGeometry(0.045, 8, 6), navWhite);
+  tailNav.position.set(0, 1.0, 0.28);
+  rudderPivot.add(tailNav);
+  body.add(rudderPivot);
+
+  // Kırmızı ikaz feneri (fin tepesi) — yanıp söner
+  const beacon = new THREE.Mesh(new THREE.SphereGeometry(0.05, 8, 6), beaconMat);
+  beacon.position.set(0, 1.20, 2.70);
+  body.add(beacon);
+
+  return {
+    group,
+    body,
+    prop,
+    propDisc,
+    aileronL: wingL.aileron,
+    aileronR: wingR.aileron,
+    elevator: elevatorPivot,
+    rudder: rudderPivot,
+    flapL: wingL.flap,
+    flapR: wingR.flap,
+    beacon,
+  };
 }
 
 export class AircraftView {
@@ -91,7 +305,18 @@ export class AircraftView {
   camMode: CamMode = 'chase';
 
   private plane: THREE.Group;
-  private prop: THREE.Object3D;
+  private body: THREE.Group;
+  private prop: THREE.Group;
+  private propDisc: THREE.Mesh;
+  private aileronL: THREE.Object3D;
+  private aileronR: THREE.Object3D;
+  private elevator: THREE.Object3D;
+  private rudder: THREE.Object3D;
+  private flapL: THREE.Object3D;
+  private flapR: THREE.Object3D;
+  private beacon: THREE.Mesh;
+  private flapPos = 0;
+  private clockT = 0;
   private trackArrow: THREE.ArrowHelper;
   private ground: THREE.Mesh;
   private grid: THREE.GridHelper;
@@ -143,8 +368,16 @@ export class AircraftView {
 
     const ac = buildAircraft();
     this.plane = ac.group;
-    this.plane.rotation.order = 'YXZ';
+    this.body = ac.body;
     this.prop = ac.prop;
+    this.propDisc = ac.propDisc;
+    this.aileronL = ac.aileronL;
+    this.aileronR = ac.aileronR;
+    this.elevator = ac.elevator;
+    this.rudder = ac.rudder;
+    this.flapL = ac.flapL;
+    this.flapR = ac.flapR;
+    this.beacon = ac.beacon;
     s.add(this.plane);
 
     // Uçuş yolu yönü (sarı ok): slip/skid'de burun bu oktan sapar
@@ -175,8 +408,37 @@ export class AircraftView {
     const pos = new THREE.Vector3(px, ALT, pz);
     this.plane.position.copy(pos);
     this.plane.rotation.y = -(m.heading + m.sideslipDeg * DEG);
-    this.plane.rotation.z = -m.bank * DEG;
-    this.prop.rotation.z += simDt * 40;
+
+    // ---- Kontrol yüzeyleri ----
+    // Aileronlar: yatış komutu + roll hızı. Sağa yatışta sağ aileron yukarı, sol aşağı.
+    const ailCmd = clamp((m.target.bank - m.bank) / 8 + m.rollRate / 12, -1, 1);
+    const ail = ailCmd * AILERON_MAX * DEG;
+    this.aileronR.rotation.x = -ail;
+    this.aileronL.rotation.x = ail;
+
+    // Elevatör: dönüşte yük faktörü kadar back-pressure (n = 1/cosφ)
+    const n = 1 / Math.max(Math.cos(m.bank * DEG), 0.2);
+    const back = clamp((n - 1) * 45, 0, ELEVATOR_MAX);
+    this.elevator.rotation.x = -back * DEG; // TE yukarı = burun yukarı
+    this.body.rotation.x = back * 0.45 * DEG; // görsel yunuslama (hücum açısı hissi)
+
+    // Rudder: pilot girdisi kadar sapar
+    this.rudder.rotation.y = m.rudder * RUDDER_MAX * DEG;
+
+    // Flaplar: düşük süratte kademesiz iner
+    const flapTarget = clamp((FLAP_UP_KT - m.speed) / (FLAP_UP_KT - FLAP_FULL_KT), 0, 1) * FLAP_MAX;
+    this.flapPos += (flapTarget - this.flapPos) * (1 - Math.exp(-realDt * 2.5));
+    this.flapL.rotation.x = this.flapPos * DEG;
+    this.flapR.rotation.x = this.flapPos * DEG;
+
+    // Bank (roll) ve yunuslama gövde grubunda
+    this.body.rotation.z = -m.bank * DEG;
+
+    // Pervane + yanıp sönen ikaz feneri
+    this.prop.rotation.z += simDt * (30 + m.speed * 0.35);
+    this.propDisc.visible = simDt > 0;
+    this.clockT += realDt;
+    this.beacon.visible = this.clockT % 1.6 < 0.12;
 
     const dir = new THREE.Vector3(Math.sin(m.heading), 0, -Math.cos(m.heading));
     this.trackArrow.position.copy(pos);
