@@ -1,8 +1,9 @@
 import './style.css';
 import * as THREE from 'three';
 import { CSS2DRenderer } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
-import { FlightModel, stdBank } from './physics';
+import { FlightModel, clamp, stdBank } from './physics';
 import { scenarios } from './scenarios';
+import { PRES_STEPS } from './presentation';
 import { TurnCoordinatorGauge, TurnSlipGauge } from './gauges';
 import { AircraftView, CamMode } from './aircraftView';
 import { MechanismView, MechType } from './mechanismView';
@@ -105,6 +106,43 @@ function runScenario(id: string) {
 }
 setActive('#scenarios', 'id', activeScenario);
 
+// ---- Sunum modu (P): 8 adımlık ders turu ----
+let presIndex = -1;
+
+function applyPresStep(i: number) {
+  presIndex = Math.max(0, Math.min(PRES_STEPS.length - 1, i));
+  const st = PRES_STEPS[presIndex];
+  if (st.scenario) runScenario(st.scenario);
+  if (st.view) setView(st.view);
+  if (st.cam) setCam(st.cam);
+  if (st.mech) setMech(st.mech);
+  slow = !!st.slow;
+  updatePlayback();
+  $('#pres-title').textContent = st.title;
+  $('#pres-text').textContent = st.text;
+  $('#pres-count').textContent = `${presIndex + 1}/${PRES_STEPS.length}`;
+}
+
+function enterPresentation() {
+  (document.activeElement as HTMLElement | null)?.blur?.();
+  $('#app').classList.add('presenting');
+  $('#pres-bar').classList.remove('hidden');
+  const b = $('#b-pres');
+  b.classList.add('on');
+  b.textContent = '⏹ Sunumu bitir';
+  applyPresStep(0);
+}
+
+function exitPresentation() {
+  presIndex = -1;
+  $('#app').classList.remove('presenting');
+  $('#pres-bar').classList.add('hidden');
+  const b = $('#b-pres');
+  b.classList.remove('on');
+  b.textContent = '🎤 Sunum';
+}
+$('#b-pres').addEventListener('click', () => (presIndex >= 0 ? exitPresentation() : enterPresentation()));
+
 // ---- Slider'lar ----
 const sBank = $<HTMLInputElement>('#s-bank');
 const sRudder = $<HTMLInputElement>('#s-rudder');
@@ -184,7 +222,19 @@ window.addEventListener('keydown', (e) => {
     slow = !slow;
     updatePlayback();
   } else if (k === 'h') togglePanel();
-  else if (k === 'm') setView(view === 'aircraft' ? 'mechanism' : 'aircraft');
+  else if (k === 'p') presIndex >= 0 ? exitPresentation() : enterPresentation();
+  else if (k === 'arrowright' && presIndex >= 0) {
+    e.preventDefault();
+    applyPresStep(presIndex + 1);
+  } else if (k === 'arrowleft' && presIndex >= 0) {
+    e.preventDefault();
+    applyPresStep(presIndex - 1);
+  } else if (k === 'q' || k === 'e' || k === 'x') {
+    // Canlı rudder trim: fareye uzanmadan düzeltme göstermek için
+    manualInput();
+    if (k === 'x') model.target.rudder = 0;
+    else model.target.rudder = clamp(model.target.rudder + (k === 'e' ? 0.1 : -0.1), -1, 1);
+  } else if (k === 'm') setView(view === 'aircraft' ? 'mechanism' : 'aircraft');
   else if (k === 'c') {
     const next: CamMode =
       aircraft.camMode === 'chase' ? 'top' : aircraft.camMode === 'top' ? 'orbit' : 'chase';
@@ -281,6 +331,7 @@ function frame() {
   if (q.get('mech') === 'tc') setMech('tc');
   if (q.get('cam') === 'top') setCam('top');
   else if (q.get('cam') === 'orbit') setCam('orbit');
+  if (q.get('present') === '1') enterPresentation();
   if (q.get('panel') === '0') togglePanel();
   const warm = parseFloat(q.get('t') ?? '0');
   // Belirtilen süre kadar simülasyonu önceden ilerlet

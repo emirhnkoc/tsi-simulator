@@ -24,6 +24,10 @@ npm run build:single   # dist-single/index.html -> internetsiz, çift tıklayıp
 | `M` | 3D Uçak ↔ Mekanizma |
 | `C` | Kamera: Arkadan → Üstten → Yörünge |
 | `T` | Mekanizma: Turn & Slip ↔ Turn Coordinator |
+| `P` | Sunum modu: aç / kapat |
+| `→` / `←` | Sunumda sonraki / önceki adım |
+| `Q` / `E` | Rudder trim: sol / sağ (canlı düzeltme için) |
+| `X` | Rudder'ı sıfırla |
 
 ## URL parametreleri
 
@@ -36,6 +40,11 @@ index.html?s=roll&view=mechanism&mech=tc&panel=0
 - `s`: `level` | `stdR` | `stdL` | `slip` | `skid` | `roll` | `rudder`
 - `view=mechanism`, `mech=tc`, `cam=top`, `panel=0`
 - `t`: simülasyonu bu kadar saniye ileri sararak başlatır
+- `present=1`: sunum modunda açar (ör. derste projeksiyona doğrudan sunumla başla)
+
+## Sunum modu
+
+`P` tuşu (veya 🎤 Sunum düğmesi) 8 adımlık ders turunu başlatır: tanıtım → standart dönüş → koordineli dönüş → slip → skid → sadece rudder → iki göstergenin farkı (yavaş çekim) → mekanizma. Her adımda senaryo, kamera ve görünüm otomatik kurulur; altta konuyu anlatan başlık bandı belirir. `→`/`←` ile adımlar arası geçiş, `Q`/`E` ile fareye dokunmadan canlı rudder düzeltmesi yapılır. Panel gizlenir, göstergeler ve durum rozeti büyür.
 
 ## Fizik modeli
 

@@ -30,6 +30,13 @@
           <div class="overlay bl">
             <div id="status" class="status coordinated">Koordineli</div>
           </div>
+          <div class="overlay bc">
+            <div id="pres-bar" class="hidden">
+              <div class="pres-head"><b id="pres-title"></b><span id="pres-count"></span></div>
+              <p id="pres-text"></p>
+              <div class="pres-hint">→ sonraki · ← önceki · Q/E rudder · X rudder sıfırla · P çıkış</div>
+            </div>
+          </div>
           <div class="overlay br">
             <div id="time-badge" class="badge hidden"></div>
           </div>
@@ -66,6 +73,7 @@
           <div class="playback">
             <button id="b-pause" title="Boşluk">⏸ Duraklat</button>
             <button id="b-slow" title="S">🐢 Yavaş çekim</button>
+            <button id="b-pres" title="P">🎤 Sunum</button>
             <button id="b-hide" title="H">▾ Paneli gizle</button>
           </div>
           <div class="readouts" id="readouts"></div>

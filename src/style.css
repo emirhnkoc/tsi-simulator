@@ -190,3 +190,25 @@ input[type='range'] { width: 100%; accent-color: var(--accent); }
 .readouts div { display: flex; flex-direction: column; }
 .readouts span { font-size: 12px; color: var(--muted); }
 .readouts b { font-size: 19px; font-variant-numeric: tabular-nums; }
+
+/* ---- Sunum modu ---- */
+.overlay.bc { bottom: 14px; left: 50%; transform: translateX(-50%); }
+#pres-bar {
+  max-width: min(920px, 90vw);
+  background: rgba(8, 12, 18, 0.88);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 10px 24px 12px;
+  text-align: center;
+  backdrop-filter: blur(4px);
+}
+#pres-bar .pres-head { display: flex; justify-content: center; align-items: baseline; gap: 12px; }
+#pres-bar b { font-size: 24px; }
+#pres-bar #pres-count { font-size: 15px; color: var(--muted); font-variant-numeric: tabular-nums; }
+#pres-bar p { margin: 6px 0; font-size: 19px; line-height: 1.45; }
+#pres-bar .pres-hint { font-size: 13px; color: var(--muted); }
+#app.presenting #panel { display: none; }
+#app.presenting #gauges { width: min(58vh, 46vw); }
+#app.presenting .gauge figcaption { font-size: 18px; }
+#app.presenting .status { font-size: 34px; padding: 10px 24px; }
+#app.presenting .label3d { font-size: 17px; }
