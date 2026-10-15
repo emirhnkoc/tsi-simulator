@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { DEG, FlightModel, SIDESLIP_PER_RUDDER, clamp } from './physics';
 
 /** 1 sahne birimi = 40 m. Standart dönüş yarıçapı 100 kt'ta ~1 km, yani ~25 birim. */
@@ -158,7 +159,7 @@ const FLAP_FULL_KT = 62;
 const DIHEDRAL = 2.5;
 const TAN_D = Math.tan(DIHEDRAL * DEG);
 
-export type CamMode = 'chase' | 'top';
+export type CamMode = 'chase' | 'top' | 'orbit';
 
 /** İki nokta arasına çubuk (strudel, iniş takımı bacağı) yerleştirir. */
 function strut(a: THREE.Vector3, b: THREE.Vector3, r: number, mat: THREE.Material): THREE.Mesh {
@@ -446,6 +447,7 @@ function buildAircraft() {
 export class AircraftView {
   readonly scene = new THREE.Scene();
   readonly camera = new THREE.PerspectiveCamera(50, 1, 0.1, 3000);
+  readonly controls: OrbitControls;
   camMode: CamMode = 'chase';
 
   private plane: THREE.Group;
@@ -486,11 +488,24 @@ export class AircraftView {
   private camPos = new THREE.Vector3();
   private camLook = new THREE.Vector3();
   private camInit = false;
+  private orbitPrev = new THREE.Vector3();
+  private orbitInit = false;
 
-  constructor() {
+  constructor(canvas: HTMLElement) {
     const s = this.scene;
     s.background = new THREE.Color(SKY_HORIZON);
     s.fog = new THREE.Fog(SKY_HORIZON, 150, 850);
+
+    // Yörünge kamerası: hedef hep uçak (pan yok), kullanıcı açı + zoom verir
+    this.controls = new OrbitControls(this.camera, canvas);
+    this.controls.enableDamping = true;
+    this.controls.dampingFactor = 0.08;
+    this.controls.enablePan = false;
+    this.controls.minDistance = 5;
+    this.controls.maxDistance = 80;
+    this.controls.minPolarAngle = (5 * Math.PI) / 180;
+    this.controls.maxPolarAngle = (95 * Math.PI) / 180;
+    this.controls.enabled = false;
 
     s.add(new THREE.HemisphereLight(0xdfefff, 0x4a6040, 1.1));
     this.sun = new THREE.DirectionalLight(0xfff1da, 1.7);
@@ -657,6 +672,10 @@ export class AircraftView {
 
   setCamMode(mode: CamMode) {
     this.camMode = mode;
+    // Yörüngeye girişte mevcut kareden devam edilir (sıçrama yok);
+    // hedef ilk karede uçağa kilitlenir.
+    this.controls.enabled = mode === 'orbit';
+    this.orbitInit = false;
   }
 
   resetTrail() {
@@ -769,9 +788,9 @@ export class AircraftView {
     const dir = new THREE.Vector3(Math.sin(m.heading), 0, -Math.cos(m.heading));
     this.trackArrow.position.copy(pos);
     this.trackArrow.setDirection(dir);
-    // Sarı ok yalnızca üstten görünümde anlamlı (rota vs. burun).
+    // Sarı ok üstten ve yörünge görünümde anlamlı (rota vs. burun).
     // Arkadan bakışta koni üst üste binip leke gibi göründüğü için gizlenir.
-    this.trackArrow.visible = this.camMode === 'top';
+    this.trackArrow.visible = this.camMode !== 'chase';
 
     this.ground.position.set(px, 0, pz);
     this.grid.position.set(Math.round(px / 10) * 10, 0.02, Math.round(pz / 10) * 10);
@@ -808,6 +827,22 @@ export class AircraftView {
     }
 
     // Kamera
+    if (this.camMode === 'orbit') {
+      // Hedef hep uçak: kamera uçağın hareket deltası kadar ötelenir,
+      // kullanıcı yalnızca açı + zoom verir (uçak hep ortada).
+      if (!this.orbitInit) {
+        this.orbitPrev.copy(pos);
+        this.controls.target.copy(pos);
+        this.orbitInit = true;
+      } else {
+        this.camera.position.add(pos.clone().sub(this.orbitPrev));
+        this.controls.target.copy(pos);
+        this.orbitPrev.copy(pos);
+      }
+      this.camera.up.set(0, 1, 0);
+      this.controls.update();
+      return;
+    }
     let wantPos: THREE.Vector3;
     let wantLook: THREE.Vector3;
     if (this.camMode === 'chase') {

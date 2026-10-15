@@ -22,7 +22,7 @@ npm run build:single   # dist-single/index.html -> internetsiz, çift tıklayıp
 | `S` | Yavaş çekim (×0.25) |
 | `H` | Alt paneli gizle / göster |
 | `M` | 3D Uçak ↔ Mekanizma |
-| `C` | Kamera: Arkadan ↔ Üstten |
+| `C` | Kamera: Arkadan → Üstten → Yörünge |
 | `T` | Mekanizma: Turn & Slip ↔ Turn Coordinator |
 
 ## URL parametreleri

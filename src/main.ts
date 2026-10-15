@@ -27,7 +27,7 @@ const labelRenderer = new CSS2DRenderer();
 labelRenderer.domElement.className = 'label-layer';
 host.appendChild(labelRenderer.domElement);
 
-const aircraft = new AircraftView();
+const aircraft = new AircraftView(renderer.domElement);
 const mech = new MechanismView(renderer.domElement);
 type View = 'aircraft' | 'mechanism';
 let view: View = 'aircraft';
@@ -60,6 +60,8 @@ function setView(v: View) {
   $('#mech-tabs').classList.toggle('hidden', v !== 'mechanism');
   labelRenderer.domElement.classList.toggle('hidden', v !== 'mechanism');
   mech.controls.enabled = v === 'mechanism';
+  // İki orbit kontrolü aynı canvas'ı paylaşır: yalnızca aktif görünümünki açık
+  aircraft.controls.enabled = v === 'aircraft' && aircraft.camMode === 'orbit';
 }
 document.querySelectorAll<HTMLButtonElement>('#view-tabs button').forEach((b) =>
   b.addEventListener('click', () => setView(b.dataset.view as View)),
@@ -67,6 +69,7 @@ document.querySelectorAll<HTMLButtonElement>('#view-tabs button').forEach((b) =>
 
 function setCam(c: CamMode) {
   aircraft.setCamMode(c);
+  aircraft.controls.enabled = view === 'aircraft' && c === 'orbit';
   setActive('#cam-tabs', 'cam', c);
 }
 document.querySelectorAll<HTMLButtonElement>('#cam-tabs button').forEach((b) =>
@@ -182,7 +185,11 @@ window.addEventListener('keydown', (e) => {
     updatePlayback();
   } else if (k === 'h') togglePanel();
   else if (k === 'm') setView(view === 'aircraft' ? 'mechanism' : 'aircraft');
-  else if (k === 'c') setCam(aircraft.camMode === 'chase' ? 'top' : 'chase');
+  else if (k === 'c') {
+    const next: CamMode =
+      aircraft.camMode === 'chase' ? 'top' : aircraft.camMode === 'top' ? 'orbit' : 'chase';
+    setCam(next);
+  }
   else if (k === 't') setMech(mech.type === 'tns' ? 'tc' : 'tns');
 });
 
@@ -273,6 +280,7 @@ function frame() {
   if (q.get('view') === 'mechanism') setView('mechanism');
   if (q.get('mech') === 'tc') setMech('tc');
   if (q.get('cam') === 'top') setCam('top');
+  else if (q.get('cam') === 'orbit') setCam('orbit');
   if (q.get('panel') === '0') togglePanel();
   const warm = parseFloat(q.get('t') ?? '0');
   // Belirtilen süre kadar simülasyonu önceden ilerlet
