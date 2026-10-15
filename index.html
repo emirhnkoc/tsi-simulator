@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="tr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Turn Coordinator &amp; Turn-and-Slip Simülatörü</title>
+  </head>
+  <body>
+    <div id="app">
+      <div id="top">
+        <section id="scene">
+          <div id="canvas-host"></div>
+          <div class="overlay tl">
+            <div class="seg" id="view-tabs">
+              <button data-view="aircraft" class="active">3D Uçak</button>
+              <button data-view="mechanism">Mekanizma</button>
+            </div>
+          </div>
+          <div class="overlay tr">
+            <div class="seg" id="cam-tabs">
+              <button data-cam="chase" class="active">Arkadan</button>
+              <button data-cam="top">Üstten</button>
+            </div>
+            <div class="seg hidden" id="mech-tabs">
+              <button data-mech="tns" class="active">Turn &amp; Slip</button>
+              <button data-mech="tc">Turn Coordinator</button>
+            </div>
+          </div>
+          <div class="overlay bl">
+            <div id="status" class="status coordinated">Koordineli</div>
+          </div>
+          <div class="overlay br">
+            <div id="time-badge" class="badge hidden"></div>
+          </div>
+        </section>
+        <aside id="gauges">
+          <figure class="gauge">
+            <div id="tc-host" class="gauge-host"></div>
+            <figcaption>Turn Coordinator</figcaption>
+          </figure>
+          <figure class="gauge">
+            <div id="tns-host" class="gauge-host"></div>
+            <figcaption>Turn &amp; Slip Indicator</figcaption>
+          </figure>
+        </aside>
+      </div>
+
+      <footer id="panel">
+        <div id="scenarios"></div>
+        <div id="controls">
+          <div class="sliders">
+            <label>
+              <span>Yatış <b id="v-bank">0°</b></span>
+              <input id="s-bank" type="range" min="-45" max="45" step="0.5" value="0" />
+            </label>
+            <label>
+              <span>Rudder <small>(0 = koordineli)</small> <b id="v-rudder">0</b></span>
+              <input id="s-rudder" type="range" min="-1" max="1" step="0.05" value="0" />
+            </label>
+            <label>
+              <span>Hız <b id="v-speed">100 kt</b></span>
+              <input id="s-speed" type="range" min="60" max="180" step="1" value="100" />
+            </label>
+          </div>
+          <div class="playback">
+            <button id="b-pause" title="Boşluk">⏸ Duraklat</button>
+            <button id="b-slow" title="S">🐢 Yavaş çekim</button>
+            <button id="b-hide" title="H">▾ Paneli gizle</button>
+          </div>
+          <div class="readouts" id="readouts"></div>
+        </div>
+      </footer>
+      <button id="b-show" class="hidden" title="H">▴ Panel</button>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
