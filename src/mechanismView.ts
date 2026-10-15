@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
-import { DEG, FlightModel, TC_CANT } from './physics';
+import { DEG, FlightModel, TC_CANT, clamp } from './physics';
 import { signalToAngle, STD_MARK_DEG } from './gauges';
 
 export type MechType = 'tns' | 'tc';
@@ -37,34 +37,167 @@ function curvedArrow(radius: number, arc: number, color: number, tube = 0.055, c
   return { group: g, mat };
 }
 
-function dialTexture() {
+// ---- Kadran dokuları: sağdaki SVG göstergelerin birebir canvas kopyası ----
+// 3D kadran çapı 4.0 dünya birimi <-> 512 px doku; SVG 300 birim -> S ile çevrilir.
+const DIAL_PX = 512;
+const DS = DIAL_PX / 300;
+const DC = DIAL_PX / 2;
+/** Top yayının yarıçapı (dünya birimi). */
+const BALL_ARC_R = 4.0;
+
+function dialCtx(): [HTMLCanvasElement, CanvasRenderingContext2D] {
   const c = document.createElement('canvas');
-  c.width = c.height = 512;
-  const x = c.getContext('2d')!;
-  x.fillStyle = '#18181a';
+  c.width = c.height = DIAL_PX;
+  return [c, c.getContext('2d')!];
+}
+
+function dialBase(x: CanvasRenderingContext2D, faceColor: string, faceR: number) {
+  x.fillStyle = '#101012';
   x.beginPath();
-  x.arc(256, 256, 256, 0, Math.PI * 2);
+  x.arc(DC, DC, 254, 0, Math.PI * 2);
   x.fill();
-  x.strokeStyle = '#555';
-  x.lineWidth = 14;
+  x.strokeStyle = '#4a4a4a';
+  x.lineWidth = 12;
+  x.beginPath();
+  x.arc(DC, DC, 244, 0, Math.PI * 2);
   x.stroke();
-  x.fillStyle = '#f2f2f2';
-  for (const d of [-STD_MARK_DEG, 0, STD_MARK_DEG]) {
-    x.save();
-    x.translate(256, 256);
-    x.rotate(d * DEG);
-    x.fillRect(-12, -225, 24, 42);
-    x.restore();
-  }
-  x.font = 'bold 70px system-ui, sans-serif';
+  x.fillStyle = '#0c0c0c';
+  x.beginPath();
+  x.arc(DC, DC, 139 * DS, 0, Math.PI * 2);
+  x.fill();
+  x.fillStyle = faceColor;
+  x.beginPath();
+  x.arc(DC, DC, faceR * DS, 0, Math.PI * 2);
+  x.fill();
+}
+
+function dialText(
+  x: CanvasRenderingContext2D,
+  text: string,
+  svgX: number,
+  svgY: number,
+  px: number,
+  color = '#f4f4f4',
+) {
+  x.fillStyle = color;
+  x.font = `700 ${px}px 'Segoe UI', Arial, sans-serif`;
   x.textAlign = 'center';
-  x.fillText('L', 140, 180);
-  x.fillText('R', 372, 180);
-  x.font = 'bold 40px system-ui, sans-serif';
-  x.fillText('2 MIN', 256, 420);
+  x.fillText(text, svgX * DS, svgY * DS);
+}
+
+/** Top tüpü (yay). Topun kendisi 3D küre olarak ayrı çizilir. */
+function dialTube(x: CanvasRenderingContext2D, bottomY: number) {
+  const R = 300 * DS;
+  const yc = (bottomY - 300) * DS;
+  const a = (16 * Math.PI) / 180;
+  x.lineCap = 'round';
+  x.strokeStyle = '#222';
+  x.lineWidth = 34 * DS;
+  x.beginPath();
+  x.arc(DC, yc, R, Math.PI / 2 - a, Math.PI / 2 + a);
+  x.stroke();
+  x.strokeStyle = '#d9d9d9';
+  x.lineWidth = 30 * DS;
+  x.beginPath();
+  x.arc(DC, yc, R, Math.PI / 2 - a, Math.PI / 2 + a);
+  x.stroke();
+  // Orta çentikler
+  x.strokeStyle = '#1a1a1a';
+  x.lineWidth = 3 * DS;
+  for (const dx of [-15, 15]) {
+    x.beginPath();
+    x.moveTo(DC + dx * DS, (bottomY - 17) * DS);
+    x.lineTo(DC + dx * DS, (bottomY + 17) * DS);
+    x.stroke();
+  }
+}
+
+function dialFinish(c: HTMLCanvasElement): THREE.CanvasTexture {
   const t = new THREE.CanvasTexture(c);
   t.colorSpace = THREE.SRGBColorSpace;
   return t;
+}
+
+/** Turn & Slip yüzü: doghouse + yan oklar, L/R üstte, iğne pivotu altta. */
+function tnsFaceTexture(): THREE.CanvasTexture {
+  const [c, x] = dialCtx();
+  dialBase(x, '#2a2a2c', 130);
+  const pivotY = 168 * DS;
+  const mark = (pts: number[][], ox: number, oy: number) => {
+    x.beginPath();
+    pts.forEach(([px, py], i) => {
+      const X = ox + px * DS;
+      const Y = oy + py * DS;
+      if (i === 0) x.moveTo(X, Y);
+      else x.lineTo(X, Y);
+    });
+    x.closePath();
+    x.fill();
+  };
+  x.fillStyle = '#f4f4f4';
+  for (const d of [-STD_MARK_DEG, 0, STD_MARK_DEG]) {
+    x.save();
+    x.translate(DC, pivotY);
+    x.rotate(d * DEG);
+    mark(
+      d === 0
+        ? [
+            [-15, -12],
+            [15, -12],
+            [15, 2],
+            [0, 10],
+            [-15, 2],
+          ]
+        : [
+            [-8, -12],
+            [8, -12],
+            [8, 4],
+            [0, 12],
+            [-8, 4],
+          ],
+      0,
+      -128 * DS,
+    );
+    x.restore();
+  }
+  dialText(x, 'L', 92, 92, 48);
+  dialText(x, 'R', 208, 92, 48);
+  // Sağdaki küçük detay kutusu
+  x.fillStyle = '#111111';
+  x.fillRect(214 * DS, 120 * DS, 24 * DS, 30 * DS);
+  x.strokeStyle = '#666666';
+  x.lineWidth = 2 * DS;
+  x.strokeRect(214 * DS, 120 * DS, 24 * DS, 30 * DS);
+  dialTube(x, 222);
+  dialText(x, '2 MIN  TURN', 150, 260, 31);
+  dialText(x, 'DC   ELEC', 150, 276, 16, '#d8d8d8');
+  return dialFinish(c);
+}
+
+/** Turn Coordinator yüzü: yan çizgi işaretler, L/R + yazılar altta. */
+function tcFaceTexture(): THREE.CanvasTexture {
+  const [c, x] = dialCtx();
+  dialBase(x, '#2e2e30', 112);
+  x.strokeStyle = '#ffffff';
+  x.lineWidth = 7 * DS;
+  for (const deg of [0, STD_MARK_DEG]) {
+    for (const side of [1, -1]) {
+      const a = (side === 1 ? deg : 180 - deg) * DEG;
+      x.beginPath();
+      x.moveTo(DC + Math.cos(a) * 114 * DS, DC + Math.sin(a) * 114 * DS);
+      x.lineTo(DC + Math.cos(a) * 135 * DS, DC + Math.sin(a) * 135 * DS);
+      x.stroke();
+    }
+  }
+  dialText(x, 'D.C.', 150, 44, 20, '#d8d8d8');
+  dialText(x, 'ELEC.', 150, 58, 20, '#d8d8d8');
+  dialText(x, 'TURN COORDINATOR', 150, 196, 20);
+  dialText(x, 'L', 84, 262, 48);
+  dialText(x, 'R', 216, 262, 48);
+  dialTube(x, 226);
+  dialText(x, '2 MIN.', 150, 262, 31);
+  dialText(x, 'NO PITCH INFORMATION', 150, 277, 16, '#d8d8d8');
+  return dialFinish(c);
 }
 
 export class MechanismView {
@@ -77,6 +210,12 @@ export class MechanismView {
   private gimbal = new THREE.Group();
   private rotor: THREE.Mesh;
   private needle = new THREE.Group();
+  private needleBar: THREE.Mesh;
+  private miniPlane = new THREE.Group();
+  private ball: THREE.Mesh;
+  private ballYc = 3.04;
+  private dialMat: THREE.MeshBasicMaterial;
+  private needleLabel: CSS2DObject;
   private crank = new THREE.Object3D();
   private leverTip = new THREE.Object3D();
   private rod: THREE.Mesh;
@@ -228,17 +367,27 @@ export class MechanismView {
     this.rollLabel.position.set(0, 2.5, -3.6);
     s.add(this.rollLabel);
 
-    // Gösterge kadranı ve iğne (pilot tarafı, +z)
-    const dial = new THREE.Mesh(
-      new THREE.CircleGeometry(2.0, 48),
-      new THREE.MeshBasicMaterial({ map: dialTexture(), transparent: true, opacity: 0.92 }),
-    );
+    // Gösterge kadranı (dokusu tipe göre sağdaki göstergeyle eşlenir) ve gösterge
+    this.dialMat = new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.92 });
+    const dial = new THREE.Mesh(new THREE.CircleGeometry(2.0, 48), this.dialMat);
     dial.position.z = DIAL_Z;
     s.add(dial);
-    this.needle.position.set(0, 0, DIAL_Z + 0.05);
-    const needleMesh = new THREE.Mesh(new THREE.BoxGeometry(0.14, 1.65, 0.04), new THREE.MeshBasicMaterial({ color: 0xffffff }));
-    needleMesh.position.y = 0.82;
-    this.needle.add(needleMesh);
+    this.needle.position.set(0, -0.24, DIAL_Z + 0.05);
+    const white = new THREE.MeshBasicMaterial({ color: 0xffffff });
+    // T&S iğnesi: pivot altta, ucu standart işaretlere uzanır
+    this.needleBar = new THREE.Mesh(new THREE.BoxGeometry(0.14, 1.65, 0.04), white);
+    this.needleBar.position.y = 0.82;
+    this.needle.add(this.needleBar);
+    // TC uçak silüeti: sağdaki göstergedeki gibi kanat + kuyruk + göbek
+    const wing = new THREE.Mesh(new THREE.BoxGeometry(2.6, 0.08, 0.04), white);
+    const fin = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.34, 0.04), white);
+    fin.position.y = 0.21;
+    const topBar = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.07, 0.04), white);
+    topBar.position.y = 0.36;
+    const hubPlane = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 0.05, 20).rotateX(Math.PI / 2), white);
+    this.miniPlane.add(wing, fin, topBar, hubPlane);
+    this.miniPlane.visible = false;
+    this.needle.add(this.miniPlane);
     const crankMesh = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.55, 0.04), steel);
     crankMesh.position.y = -0.27;
     this.needle.add(crankMesh);
@@ -248,14 +397,25 @@ export class MechanismView {
     this.needle.add(hub);
     s.add(this.needle);
     const needleLabel = label('İğne (ters yönde döner)');
+    this.needleLabel = needleLabel;
     needleLabel.position.set(0, -2.35, DIAL_Z);
     s.add(needleLabel);
+
+    // Top: tüp yayı üzerinde kayan 3D küre (sağdaki göstergedeki gibi)
+    this.ball = new THREE.Mesh(
+      new THREE.SphereGeometry(0.17, 16, 12),
+      new THREE.MeshStandardMaterial({ color: 0x151515, roughness: 0.35, metalness: 0.1 }),
+    );
+    this.ball.position.z = DIAL_Z + 0.04;
+    s.add(this.ball);
 
     // Bağlantı çubuğu
     this.rod = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 1, 8), steel);
     s.add(this.rod);
     this.rodLabel = label('Bağlantı çubuğu');
     s.add(this.rodLabel);
+
+    this.setType('tns');
 
     this.scene.traverse((o) => {
       if (o instanceof CSS2DObject) this.labels.push(o);
@@ -264,8 +424,25 @@ export class MechanismView {
 
   setType(t: MechType) {
     this.type = t;
-    this.axisLabelDiv.textContent =
-      t === 'tc' ? `Gimbal ekseni ${TC_CANT}° yukarı eğik → roll da algılanır` : 'Gimbal ekseni (boyuna eksen)';
+    const isTC = t === 'tc';
+    this.axisLabelDiv.textContent = isTC
+      ? `Gimbal ekseni ${TC_CANT}° yukarı eğik → roll da algılanır`
+      : 'Gimbal ekseni (boyuna eksen)';
+    // Kadran dokusu sağdaki göstergeyle eşlenir; gösterge ve pivot konumu tipe uyar
+    const old = this.dialMat.map;
+    this.dialMat.map = isTC ? tcFaceTexture() : tnsFaceTexture();
+    this.dialMat.needsUpdate = true;
+    if (old) old.dispose();
+    this.needleBar.visible = !isTC;
+    this.miniPlane.visible = isTC;
+    this.needle.position.y = isTC ? 0 : -0.24;
+    this.needle.scale.y = isTC ? 1 : 0.92;
+    (this.needleLabel.element as HTMLDivElement).textContent = isTC
+      ? 'Uçak silüeti (yatışla döner)'
+      : 'İğne (ters yönde döner)';
+    // Top yuvası yay merkezinin dünya yüksekliği
+    const bottomY = isTC ? 226 : 222;
+    this.ballYc = ((DC - (bottomY - 300) * DS) / DC) * 2.0;
   }
 
   setLabelsVisible(v: boolean) {
@@ -286,6 +463,11 @@ export class MechanismView {
     this.gimbal.rotation.z = needleAngle * GIMBAL_GAIN * DEG;
     this.needle.rotation.z = -needleAngle * DEG;
     this.rotor.rotation.x -= ROTOR_VIS_SPIN * simDt;
+
+    // Top: sağdaki göstergeyle aynı yay matematiği (0.9 ölçek, ±13.5° sınır)
+    const ba = clamp(m.ballPos * 0.9, -13.5, 13.5) * DEG;
+    this.ball.position.x = BALL_ARC_R * Math.sin(ba);
+    this.ball.position.y = this.ballYc - BALL_ARC_R * Math.cos(ba);
 
     // Bağlantı çubuğu: kol ucu -> iğne krankı
     const a = new THREE.Vector3();
