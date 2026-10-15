@@ -769,6 +769,9 @@ export class AircraftView {
     const dir = new THREE.Vector3(Math.sin(m.heading), 0, -Math.cos(m.heading));
     this.trackArrow.position.copy(pos);
     this.trackArrow.setDirection(dir);
+    // Sarı ok yalnızca üstten görünümde anlamlı (rota vs. burun).
+    // Arkadan bakışta koni üst üste binip leke gibi göründüğü için gizlenir.
+    this.trackArrow.visible = this.camMode === 'top';
 
     this.ground.position.set(px, 0, pz);
     this.grid.position.set(Math.round(px / 10) * 10, 0.02, Math.round(pz / 10) * 10);
