@@ -57,3 +57,11 @@ Uçak (yüksek kanatlı, tek motorlu GA uçağı) tamamen prosedürel Three.js g
 Bu hareketlerin tümü yalnızca görseldir; fizik/gösterge davranışını değiştirmez.
 Yüzeyler pilot girdisini gerçek zamanlı izler — simülasyon duraklatılmışken
 bile slider oynatıldığında aileron, elevatör, rudder ve burun savrulması oynar.
+
+## Çevre
+
+- **Gökyüzü**: gradyan kubbe (zenit → ufuk), güneş diski ve rüzgarla sürüklenen 16 low-poly bulut
+- **Zemin**: tarla mozaiği + yol ağı dokusu; doku dünyada sabit kalır, hız/konum hissi verir
+- **Bitkiler**: kümelenmiş orman yamalarında 380 çam + 320 gövdeli yapraklı ağaç
+- **Yerleşim**: 36 ev (duvar + piramit çatı); bitki ve evler uçak etrafında sarılır, hiç tükenmez
+- **Gölgeler**: yumuşak (PCF) güneş gölgesi — uçağın gölgesi zeminde izlenir, dönüşlerde oryantasyonu okutur

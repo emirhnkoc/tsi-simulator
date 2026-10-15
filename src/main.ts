@@ -20,6 +20,8 @@ $('#tns-host').appendChild(tns.el);
 const host = $('#canvas-host');
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 host.appendChild(renderer.domElement);
 const labelRenderer = new CSS2DRenderer();
 labelRenderer.domElement.className = 'label-layer';

@@ -4,8 +4,148 @@ import { DEG, FlightModel, SIDESLIP_PER_RUDDER, clamp } from './physics';
 /** 1 sahne birimi = 40 m. Standart dönüş yarıçapı 100 kt'ta ~1 km, yani ~25 birim. */
 const WORLD_SCALE = 1 / 40;
 const ALT = 14;
-const SKY = 0x8fb7dc;
+const SKY_ZENITH = 0x3d6ca8;
+const SKY_HORIZON = 0xcfdcea;
 const TRAIL_MAX = 5000;
+
+// ---- Çevre ----
+/** Tarla dokusunun dünyada kapladığı aralık (birim). */
+const FIELD_TILE = 80;
+/** Bitki/evlerin uçak etrafında sarıldığı karenin kenarı (birim). */
+const SCENERY_SIZE = 1200;
+const SCENERY_HALF = SCENERY_SIZE / 2;
+/** Bulut sürüklenme hızı (birim/sn). */
+const WIND_DRIFT = 0.4;
+
+function skyMaterial(): THREE.ShaderMaterial {
+  return new THREE.ShaderMaterial({
+    side: THREE.BackSide,
+    depthWrite: false,
+    fog: false,
+    uniforms: {
+      top: { value: new THREE.Color(SKY_ZENITH) },
+      bottom: { value: new THREE.Color(SKY_HORIZON) },
+    },
+    vertexShader: `
+      varying vec3 vDir;
+      void main() {
+        vDir = normalize(position);
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }`,
+    fragmentShader: `
+      varying vec3 vDir;
+      uniform vec3 top;
+      uniform vec3 bottom;
+      void main() {
+        float h = clamp(vDir.y, -1.0, 1.0);
+        vec3 col = h >= 0.0
+          ? mix(bottom, top, pow(h, 0.55))
+          : mix(bottom, bottom * 0.72, clamp(-h * 3.0, 0.0, 1.0));
+        gl_FragColor = vec4(col, 1.0);
+      }`,
+  });
+}
+
+/** Yukarıdan tarla mozaiği + yol ağı: tekrarlandığında dünyada sabit durur. */
+function fieldTexture(): THREE.CanvasTexture {
+  const c = document.createElement('canvas');
+  c.width = c.height = 512;
+  const x = c.getContext('2d')!;
+  x.fillStyle = '#6d8f52';
+  x.fillRect(0, 0, 512, 512);
+  const palette = ['#6d8f52', '#7ba05b', '#5f8449', '#a3a06b', '#8f9a58', '#75915c', '#b0a377'];
+  let seed = 1234;
+  const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+  const n = 8;
+  const s = 512 / n;
+  for (let i = 0; i < n; i++) {
+    for (let j = 0; j < n; j++) {
+      x.fillStyle = palette[(rnd() * palette.length) | 0];
+      x.fillRect(i * s + 1, j * s + 1, s - 2, s - 2);
+      // Sürüm çizgileri
+      x.strokeStyle = 'rgba(0,0,0,0.08)';
+      x.lineWidth = 1;
+      for (let k = 6; k < s; k += 6) {
+        x.beginPath();
+        if (rnd() < 0.5) {
+          x.moveTo(i * s + k, j * s);
+          x.lineTo(i * s + k, j * s + s);
+        } else {
+          x.moveTo(i * s, j * s + k);
+          x.lineTo(i * s + s, j * s + k);
+        }
+        x.stroke();
+      }
+    }
+  }
+  // Yol ağı (karo başına artı): uzaktan hız/konum referansı
+  x.fillStyle = '#9b968c';
+  x.fillRect(0, 250, 512, 12);
+  x.fillRect(250, 0, 12, 512);
+  x.fillStyle = '#f2f2f2';
+  for (let k = 0; k < 512; k += 32) {
+    x.fillRect(k, 255, 16, 2);
+    x.fillRect(255, k, 2, 16);
+  }
+  const t = new THREE.CanvasTexture(c);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.repeat.set(4000 / FIELD_TILE, 4000 / FIELD_TILE);
+  t.anisotropy = 4;
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+
+interface Veg {
+  x: number;
+  z: number;
+  s: number;
+  rot: number;
+  kind: 0 | 1; // 0 = çam, 1 = yapraklı
+}
+
+/** Kümelenmiş orman yamaları: tek tip saçılımdan doğal görünür. */
+function scatterVegetation(): Veg[] {
+  const out: Veg[] = [];
+  let seed = 7;
+  const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+  const clusters: { x: number; z: number; r: number }[] = [];
+  for (let i = 0; i < 120; i++) {
+    clusters.push({ x: (rnd() - 0.5) * SCENERY_SIZE, z: (rnd() - 0.5) * SCENERY_SIZE, r: 12 + rnd() * 40 });
+  }
+  for (let i = 0; i < 700; i++) {
+    const cl = clusters[(rnd() * clusters.length) | 0];
+    out.push({
+      x: cl.x + (rnd() + rnd() - 1) * cl.r,
+      z: cl.z + (rnd() + rnd() - 1) * cl.r,
+      s: 0.6 + rnd() * 1.3,
+      rot: rnd() * Math.PI * 2,
+      kind: i < 380 ? 0 : 1,
+    });
+  }
+  return out;
+}
+
+interface House {
+  x: number;
+  z: number;
+  s: number;
+  rot: number;
+}
+
+function scatterHouses(): House[] {
+  const out: House[] = [];
+  let seed = 42;
+  const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+  for (let i = 0; i < 36; i++) {
+    out.push({
+      x: (rnd() - 0.5) * SCENERY_SIZE,
+      z: (rnd() - 0.5) * SCENERY_SIZE,
+      s: 0.8 + rnd() * 0.7,
+      rot: rnd() * Math.PI * 2,
+    });
+  }
+  return out;
+}
 
 // ---- Kontrol yüzeyleri (tamamı görsel; fizik modeli değişmez) ----
 const AILERON_MAX = 22; // °, tam yatış komutunda
@@ -324,6 +464,18 @@ export class AircraftView {
   private visRudder = 0;
   private visElev = 0;
   private clockT = 0;
+  private sun: THREE.DirectionalLight;
+  private sky: THREE.Mesh;
+  private groundTex: THREE.CanvasTexture;
+  private clouds: THREE.Group[] = [];
+  private veg: Veg[] = [];
+  private houses: House[] = [];
+  private pines: THREE.InstancedMesh;
+  private leaves: THREE.InstancedMesh;
+  private trunks: THREE.InstancedMesh;
+  private houseWalls: THREE.InstancedMesh;
+  private houseRoofs: THREE.InstancedMesh;
+  private dummy = new THREE.Object3D();
   private trackArrow: THREE.ArrowHelper;
   private ground: THREE.Mesh;
   private grid: THREE.GridHelper;
@@ -337,41 +489,141 @@ export class AircraftView {
 
   constructor() {
     const s = this.scene;
-    s.background = new THREE.Color(SKY);
-    s.fog = new THREE.Fog(SKY, 120, 650);
+    s.background = new THREE.Color(SKY_HORIZON);
+    s.fog = new THREE.Fog(SKY_HORIZON, 150, 850);
 
-    s.add(new THREE.HemisphereLight(0xdfefff, 0x4a6040, 1.4));
-    const sun = new THREE.DirectionalLight(0xffffff, 1.6);
-    sun.position.set(40, 100, 30);
-    s.add(sun);
+    s.add(new THREE.HemisphereLight(0xdfefff, 0x4a6040, 1.1));
+    this.sun = new THREE.DirectionalLight(0xfff1da, 1.7);
+    this.sun.castShadow = true;
+    this.sun.shadow.mapSize.set(2048, 2048);
+    this.sun.shadow.camera.left = -55;
+    this.sun.shadow.camera.right = 55;
+    this.sun.shadow.camera.top = 55;
+    this.sun.shadow.camera.bottom = -55;
+    this.sun.shadow.camera.near = 20;
+    this.sun.shadow.camera.far = 450;
+    this.sun.shadow.bias = -0.0002;
+    this.sun.shadow.normalBias = 0.1;
+    s.add(this.sun);
+    s.add(this.sun.target);
 
+    // Gökyüzü kubbesi (gradyan) + güneş diski: kubbe uçağı izler
+    this.sky = new THREE.Mesh(new THREE.SphereGeometry(1500, 24, 16), skyMaterial());
+    this.sky.frustumCulled = false;
+    s.add(this.sky);
+    const sunDir = new THREE.Vector3(70, 130, 45).normalize();
+    const halo = new THREE.Mesh(
+      new THREE.CircleGeometry(130, 24),
+      new THREE.MeshBasicMaterial({
+        color: 0xfff3cf,
+        transparent: true,
+        opacity: 0.22,
+        fog: false,
+        toneMapped: false,
+        depthWrite: false,
+      }),
+    );
+    halo.position.copy(sunDir).multiplyScalar(1345);
+    halo.lookAt(0, 0, 0);
+    this.sky.add(halo);
+    const disc = new THREE.Mesh(
+      new THREE.CircleGeometry(55, 24),
+      new THREE.MeshBasicMaterial({ color: 0xfff7dd, fog: false, toneMapped: false }),
+    );
+    disc.position.copy(sunDir).multiplyScalar(1350);
+    disc.lookAt(0, 0, 0);
+    this.sky.add(disc);
+
+    // Tarla mozaiği zemin (doku dünyada sabit kalır, düzlem uçağı izler)
+    this.groundTex = fieldTexture();
     this.ground = new THREE.Mesh(
       new THREE.PlaneGeometry(4000, 4000).rotateX(-Math.PI / 2),
-      new THREE.MeshLambertMaterial({ color: 0x6d8f52 }),
+      new THREE.MeshLambertMaterial({ map: this.groundTex }),
     );
+    this.ground.receiveShadow = true;
     s.add(this.ground);
-    this.grid = new THREE.GridHelper(800, 80, 0x4f6b3a, 0x5d7c46);
+    this.grid = new THREE.GridHelper(800, 80, 0x3f6132, 0x4a7038);
+    (this.grid.material as THREE.LineBasicMaterial).transparent = true;
+    (this.grid.material as THREE.LineBasicMaterial).opacity = 0.3;
     this.grid.position.y = 0.02;
     s.add(this.grid);
 
-    // Yer referansı için rastgele ağaçlar (hareket hissi)
-    const treeGeo = new THREE.ConeGeometry(1.2, 4, 6);
-    treeGeo.translate(0, 2, 0);
-    const trees = new THREE.InstancedMesh(
-      treeGeo,
+    // Bitkiler: çam + yapraklı (gövdeli), kümelenmiş yamalar
+    this.veg = scatterVegetation();
+    const pineGeo = new THREE.ConeGeometry(1.2, 4, 6);
+    pineGeo.translate(0, 2, 0);
+    const leafGeo = new THREE.IcosahedronGeometry(1.7, 0);
+    leafGeo.scale(1, 1.25, 1);
+    leafGeo.translate(0, 3.0, 0);
+    const trunkGeo = new THREE.CylinderGeometry(0.1, 0.16, 1.4, 6);
+    trunkGeo.translate(0, 0.7, 0);
+    const pineCount = this.veg.filter((v) => v.kind === 0).length;
+    const leafCount = this.veg.length - pineCount;
+    this.pines = new THREE.InstancedMesh(
+      pineGeo,
       new THREE.MeshLambertMaterial({ color: 0x2f5a2a, flatShading: true }),
-      700,
+      pineCount,
     );
-    const m = new THREE.Matrix4();
-    let seed = 7;
-    const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
-    for (let i = 0; i < 700; i++) {
-      const sc = 0.6 + rnd() * 1.2;
-      m.makeScale(sc, sc, sc);
-      m.setPosition((rnd() - 0.5) * 1200, 0, (rnd() - 0.5) * 1200);
-      trees.setMatrixAt(i, m);
+    this.leaves = new THREE.InstancedMesh(
+      leafGeo,
+      new THREE.MeshLambertMaterial({ color: 0x4d7a35, flatShading: true }),
+      leafCount,
+    );
+    this.trunks = new THREE.InstancedMesh(
+      trunkGeo,
+      new THREE.MeshLambertMaterial({ color: 0x6b4a2f }),
+      leafCount,
+    );
+    this.pines.castShadow = true;
+    this.leaves.castShadow = true;
+    s.add(this.pines, this.leaves, this.trunks);
+
+    // Evler: duvar + piramit çatı
+    this.houses = scatterHouses();
+    const wallGeo = new THREE.BoxGeometry(2.4, 1.5, 2.0);
+    wallGeo.translate(0, 0.75, 0);
+    const roofGeo = new THREE.ConeGeometry(2.0, 1.1, 4);
+    roofGeo.rotateY(Math.PI / 4);
+    roofGeo.scale(1, 1, 0.85);
+    roofGeo.translate(0, 2.05, 0);
+    this.houseWalls = new THREE.InstancedMesh(
+      wallGeo,
+      new THREE.MeshLambertMaterial({ color: 0xe8e0d0 }),
+      this.houses.length,
+    );
+    this.houseRoofs = new THREE.InstancedMesh(
+      roofGeo,
+      new THREE.MeshLambertMaterial({ color: 0x9a4a32, flatShading: true }),
+      this.houses.length,
+    );
+    this.houseWalls.castShadow = true;
+    this.houseRoofs.castShadow = true;
+    s.add(this.houseWalls, this.houseRoofs);
+
+    // Bulutlar: yassı küre demetleri, rüzgarla sürüklenir
+    const puffGeo = new THREE.SphereGeometry(1, 7, 5);
+    const puffMat = new THREE.MeshLambertMaterial({
+      color: 0xffffff,
+      flatShading: true,
+      transparent: true,
+      opacity: 0.92,
+    });
+    let cseed = 99;
+    const crnd = () => ((cseed = (cseed * 16807) % 2147483647) / 2147483647);
+    for (let i = 0; i < 16; i++) {
+      const g = new THREE.Group();
+      const n = 4 + ((crnd() * 3) | 0);
+      for (let j = 0; j < n; j++) {
+        const p = new THREE.Mesh(puffGeo, puffMat);
+        p.position.set((crnd() - 0.5) * 10, (crnd() - 0.5) * 1.6, (crnd() - 0.5) * 5);
+        p.scale.set(2.6 + crnd() * 3.4, 1.5 + crnd() * 1.1, 2.2 + crnd() * 1.8);
+        g.add(p);
+      }
+      g.position.set((crnd() - 0.5) * SCENERY_SIZE, 30 + crnd() * 38, (crnd() - 0.5) * SCENERY_SIZE);
+      g.scale.setScalar(1.4 + crnd() * 1.6);
+      s.add(g);
+      this.clouds.push(g);
     }
-    s.add(trees);
 
     const ac = buildAircraft();
     this.plane = ac.group;
@@ -385,6 +637,9 @@ export class AircraftView {
     this.flapL = ac.flapL;
     this.flapR = ac.flapR;
     this.beacon = ac.beacon;
+    this.plane.traverse((o) => {
+      if ((o as THREE.Mesh).isMesh && o !== this.propDisc) o.castShadow = true;
+    });
     s.add(this.plane);
 
     // Uçuş yolu yönü (sarı ok): slip/skid'de burun bu oktan sapar
@@ -407,6 +662,59 @@ export class AircraftView {
   resetTrail() {
     this.trailCount = 0;
     this.trailGeo.setDrawRange(0, 0);
+  }
+
+  /** Bitki ve evleri uçak etrafındaki kareye sarar, instance matrislerini yazar. */
+  private updateScenery(px: number, pz: number) {
+    const d = this.dummy;
+    const wrap = (v: number, c: number) => {
+      let r = v - c;
+      if (r > SCENERY_HALF) r -= SCENERY_SIZE;
+      else if (r < -SCENERY_HALF) r += SCENERY_SIZE;
+      return c + r;
+    };
+    let pi = 0;
+    let li = 0;
+    for (const t of this.veg) {
+      t.x = wrap(t.x, px);
+      t.z = wrap(t.z, pz);
+      d.position.set(t.x, 0, t.z);
+      d.rotation.set(0, t.rot, 0);
+      d.scale.setScalar(t.s);
+      d.updateMatrix();
+      if (t.kind === 0) {
+        this.pines.setMatrixAt(pi++, d.matrix);
+      } else {
+        this.leaves.setMatrixAt(li, d.matrix);
+        this.trunks.setMatrixAt(li++, d.matrix);
+      }
+    }
+    this.pines.instanceMatrix.needsUpdate = true;
+    this.leaves.instanceMatrix.needsUpdate = true;
+    this.trunks.instanceMatrix.needsUpdate = true;
+    this.houses.forEach((h, i) => {
+      h.x = wrap(h.x, px);
+      h.z = wrap(h.z, pz);
+      d.position.set(h.x, 0, h.z);
+      d.rotation.set(0, h.rot, 0);
+      d.scale.setScalar(h.s);
+      d.updateMatrix();
+      this.houseWalls.setMatrixAt(i, d.matrix);
+      this.houseRoofs.setMatrixAt(i, d.matrix);
+    });
+    this.houseWalls.instanceMatrix.needsUpdate = true;
+    this.houseRoofs.instanceMatrix.needsUpdate = true;
+  }
+
+  /** Bulutlar rüzgarla sürüklenir ve uçak etrafında sarılır. */
+  private updateClouds(px: number, pz: number, dt: number) {
+    for (const g of this.clouds) {
+      g.position.x += WIND_DRIFT * dt;
+      if (g.position.x - px > SCENERY_HALF) g.position.x -= SCENERY_SIZE;
+      else if (g.position.x - px < -SCENERY_HALF) g.position.x += SCENERY_SIZE;
+      if (g.position.z - pz > SCENERY_HALF) g.position.z -= SCENERY_SIZE;
+      else if (g.position.z - pz < -SCENERY_HALF) g.position.z += SCENERY_SIZE;
+    }
   }
 
   update(m: FlightModel, simDt: number, realDt: number) {
@@ -464,6 +772,20 @@ export class AircraftView {
 
     this.ground.position.set(px, 0, pz);
     this.grid.position.set(Math.round(px / 10) * 10, 0.02, Math.round(pz / 10) * 10);
+
+    // Gökyüzü + güneş uçağı izler; gölge kamerası da öyle
+    this.sky.position.set(px, 0, pz);
+    this.sun.position.set(px + 70, 130, pz + 45);
+    this.sun.target.position.set(px, 0, pz);
+
+    // Tarla dokusu dünyada sabit kalsın (düzlem uçağı izlediği için ofset dengeler)
+    this.groundTex.offset.set(
+      (((px / FIELD_TILE) % 1) + 1) % 1,
+      (((-pz / FIELD_TILE) % 1) + 1) % 1,
+    );
+
+    this.updateClouds(px, pz, realDt);
+    this.updateScenery(px, pz);
 
     // İz
     this.trailTimer += simDt;
