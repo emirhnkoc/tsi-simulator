@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { DEG, FlightModel, clamp } from './physics';
+import { DEG, FlightModel, SIDESLIP_PER_RUDDER, clamp } from './physics';
 
 /** 1 sahne birimi = 40 m. Standart dönüş yarıçapı 100 kt'ta ~1 km, yani ~25 birim. */
 const WORLD_SCALE = 1 / 40;
@@ -265,17 +265,21 @@ function buildAircraft() {
   body.add(dorsal);
 
   const rudderPivot = new THREE.Group();
-  rudderPivot.position.set(0, 0.15, 2.90);
+  rudderPivot.position.set(0, 0.15, 2.92);
   const rudderShape = new THREE.Shape();
   rudderShape.moveTo(0, 0);
-  rudderShape.lineTo(0.32, 0);
-  rudderShape.lineTo(0.30, 1.0);
+  rudderShape.lineTo(0.45, 0);
+  rudderShape.lineTo(0.42, 1.0);
   rudderShape.lineTo(0, 1.02);
   rudderShape.closePath();
   const rudder = extrudedPanel(rudderShape, 0.06, white);
   rudderPivot.add(rudder);
+  // Kırmızı firar kenarı şeridi: sapmayı arkadan okunaklı kılar
+  const rudderTE = new THREE.Mesh(new THREE.BoxGeometry(0.075, 0.98, 0.06), red);
+  rudderTE.position.set(0, 0.51, 0.42);
+  rudderPivot.add(rudderTE);
   const tailNav = new THREE.Mesh(new THREE.SphereGeometry(0.045, 8, 6), navWhite);
-  tailNav.position.set(0, 1.0, 0.28);
+  tailNav.position.set(0, 1.0, 0.40);
   rudderPivot.add(tailNav);
   body.add(rudderPivot);
 
@@ -316,6 +320,9 @@ export class AircraftView {
   private flapR: THREE.Object3D;
   private beacon: THREE.Mesh;
   private flapPos = 0;
+  /** Pilot girdisini izleyen görsel yüzey durumları (realDt ile; duraklıyken de oynar). */
+  private visRudder = 0;
+  private visElev = 0;
   private clockT = 0;
   private trackArrow: THREE.ArrowHelper;
   private ground: THREE.Mesh;
@@ -406,8 +413,15 @@ export class AircraftView {
     const px = m.x * WORLD_SCALE;
     const pz = m.z * WORLD_SCALE;
     const pos = new THREE.Vector3(px, ALT, pz);
+
+    // ---- Pilot girdisi izleme (gerçek zamanlı; sim duraklıyken de çalışır) ----
+    // Rudder yüzeyi + burun savrulması pilot girdisini gecikmesiz izler;
+    // rota (heading) fizikte yavaşça bütünlenir — tıpkı gerçek tepkide
+    // burnun önce savrulup sonra rotaya oturması gibi.
+    const kFast = 1 - Math.exp(-Math.max(realDt, 1e-4) * 8);
+    this.visRudder += (m.target.rudder - this.visRudder) * kFast;
     this.plane.position.copy(pos);
-    this.plane.rotation.y = -(m.heading + m.sideslipDeg * DEG);
+    this.plane.rotation.y = -(m.heading + this.visRudder * SIDESLIP_PER_RUDDER * DEG);
 
     // ---- Kontrol yüzeyleri ----
     // Aileronlar: yatış komutu + roll hızı. Sağa yatışta sağ aileron yukarı, sol aşağı.
@@ -416,14 +430,18 @@ export class AircraftView {
     this.aileronR.rotation.x = -ail;
     this.aileronL.rotation.x = ail;
 
-    // Elevatör: dönüşte yük faktörü kadar back-pressure (n = 1/cosφ)
+    // Elevatör yüzeyi komut edilen yük faktörünü izler (n = 1/cosφ);
+    // gövde yunuslaması gerçekleşen yatıştan gelir (fizik duraklıyken donar).
+    const nT = 1 / Math.max(Math.cos(m.target.bank * DEG), 0.2);
+    const backTarget = clamp((nT - 1) * 45, 0, ELEVATOR_MAX);
+    this.visElev += (backTarget - this.visElev) * (1 - Math.exp(-Math.max(realDt, 1e-4) * 5));
+    this.elevator.rotation.x = -this.visElev * DEG; // TE yukarı = burun yukarı
     const n = 1 / Math.max(Math.cos(m.bank * DEG), 0.2);
     const back = clamp((n - 1) * 45, 0, ELEVATOR_MAX);
-    this.elevator.rotation.x = -back * DEG; // TE yukarı = burun yukarı
     this.body.rotation.x = back * 0.45 * DEG; // görsel yunuslama (hücum açısı hissi)
 
-    // Rudder: pilot girdisi kadar sapar
-    this.rudder.rotation.y = m.rudder * RUDDER_MAX * DEG;
+    // Rudder: pilot girdisi kadar sapar (duraklıyken de oynar)
+    this.rudder.rotation.y = this.visRudder * RUDDER_MAX * DEG;
 
     // Flaplar: düşük süratte kademesiz iner
     const flapTarget = clamp((FLAP_UP_KT - m.speed) / (FLAP_UP_KT - FLAP_FULL_KT), 0, 1) * FLAP_MAX;

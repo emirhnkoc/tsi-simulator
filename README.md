@@ -50,8 +50,10 @@ Uçak (yüksek kanatlı, tek motorlu GA uçağı) tamamen prosedürel Three.js g
 
 - **Aileronlar**: yatış komutuna ve roll hızına göre diferansiyel sapar (sağa yatışta sağ yukarı, sol aşağı).
 - **Elevatör**: dönüşte gereken back-pressure kadar yukarı sapar (n = 1/cosφ); gövde de hafif burun yukarı yunuslar.
-- **Rudder**: rudder girdisiyle ±25°'ye kadar sapar; burun sapmasıyla (görsel sideslip) birlikte izlenir.
+- **Rudder**: rudder girdisiyle ±25°'ye kadar sapar; burun savrulmasıyla (görsel sideslip, tam girdide 10°) birlikte izlenir. Kırmızı firar kenarı şeridi sapmayı arkadan okunaklı kılar.
 - **Flaps**: sürat 85 kt altına indikçe kademesiz açılır (62 kt'da 25°).
 - Pervane sürate bağlı döner (yüksek devirde bulanık disk), kanat uçlarında sol kırmızı / sağ yeşil seyrüsefer lambaları, fin tepesinde yanıp sönen kırmızı ikaz feneri vardır.
 
 Bu hareketlerin tümü yalnızca görseldir; fizik/gösterge davranışını değiştirmez.
+Yüzeyler pilot girdisini gerçek zamanlı izler — simülasyon duraklatılmışken
+bile slider oynatıldığında aileron, elevatör, rudder ve burun savrulması oynar.
