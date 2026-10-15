@@ -1,6 +1,6 @@
 # Turn Coordinator & Turn-and-Slip Simülatörü
 
-EASA Modül 11A (s. 5.56–5.58) konusunun sınıf sunumu için web tabanlı simülasyon.
+EASA Modül 11A (s. 5.56-5.58) konusunun sınıf sunumu için web tabanlı simülasyon.
 
 🌐 **Canlı Demo (GitHub Pages):** [https://emirhnkoc.github.io/tsi-simulator/](https://emirhnkoc.github.io/tsi-simulator/)
 
@@ -17,7 +17,7 @@ npm run build:single   # dist-single/index.html -> internetsiz, çift tıklayıp
 
 | Tuş | İşlev |
 |---|---|
-| `1`–`7` | Senaryolar: Düz, Std sağ, Std sol, Slip, Skid, Roll girişi, Sadece rudder |
+| `1`-`7` | Senaryolar: Düz, Std sağ, Std sol, Slip, Skid, Roll girişi, Sadece rudder |
 | `Boşluk` | Duraklat / devam |
 | `S` | Yavaş çekim (×0.25) |
 | `H` | Alt paneli gizle / göster |
@@ -64,7 +64,7 @@ Uçak (yüksek kanatlı, tek motorlu GA uçağı) tamamen prosedürel Three.js g
 - Pervane sürate bağlı döner (yüksek devirde bulanık disk), kanat uçlarında sol kırmızı / sağ yeşil seyrüsefer lambaları, fin tepesinde yanıp sönen kırmızı ikaz feneri vardır.
 
 Bu hareketlerin tümü yalnızca görseldir; fizik/gösterge davranışını değiştirmez.
-Yüzeyler pilot girdisini gerçek zamanlı izler — simülasyon duraklatılmışken
+Yüzeyler pilot girdisini gerçek zamanlı izler. Simülasyon duraklatılmışken
 bile slider oynatıldığında aileron, elevatör, rudder ve burun savrulması oynar.
 
 ## Çevre
@@ -73,4 +73,4 @@ bile slider oynatıldığında aileron, elevatör, rudder ve burun savrulması o
 - **Zemin**: tarla mozaiği + yol ağı dokusu; doku dünyada sabit kalır, hız/konum hissi verir
 - **Bitkiler**: kümelenmiş orman yamalarında 380 çam + 320 gövdeli yapraklı ağaç
 - **Yerleşim**: 36 ev (duvar + piramit çatı); bitki ve evler uçak etrafında sarılır, hiç tükenmez
-- **Gölgeler**: yumuşak (PCF) güneş gölgesi — uçağın gölgesi zeminde izlenir, dönüşlerde oryantasyonu okutur
+- **Gölgeler**: yumuşak (PCF) güneş gölgesi. Uçağın gölgesi zeminde izlenir, dönüşlerde oryantasyonu okutur

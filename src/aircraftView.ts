@@ -194,7 +194,7 @@ function extrudedPanel(shape: THREE.Shape, depth: number, mat: THREE.Material): 
 }
 
 function buildAircraft() {
-  // group: konum + yaw (heading/sideslip) — body: pitch + bank
+  // group: konum + yaw (heading/sideslip); body: pitch + bank
   const group = new THREE.Group();
   const body = new THREE.Group();
   group.add(body);
@@ -424,7 +424,7 @@ function buildAircraft() {
   rudderPivot.add(tailNav);
   body.add(rudderPivot);
 
-  // Kırmızı ikaz feneri (fin tepesi) — yanıp söner
+  // Kırmızı ikaz feneri (fin tepesi): yanıp söner
   const beacon = new THREE.Mesh(new THREE.SphereGeometry(0.05, 8, 6), beaconMat);
   beacon.position.set(0, 1.20, 2.70);
   body.add(beacon);
@@ -743,7 +743,7 @@ export class AircraftView {
 
     // ---- Pilot girdisi izleme (gerçek zamanlı; sim duraklıyken de çalışır) ----
     // Rudder yüzeyi + burun savrulması pilot girdisini gecikmesiz izler;
-    // rota (heading) fizikte yavaşça bütünlenir — tıpkı gerçek tepkide
+    // rota (heading) fizikte yavaşça bütünlenir. Tıpkı gerçek tepkide
     // burnun önce savrulup sonra rotaya oturması gibi.
     const kFast = 1 - Math.exp(-Math.max(realDt, 1e-4) * 8);
     this.visRudder += (m.target.rudder - this.visRudder) * kFast;

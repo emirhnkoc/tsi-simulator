@@ -258,7 +258,7 @@ const readoutEls: Record<string, HTMLElement> = {};
 const readouts = $('#readouts');
 for (const [id, name] of readoutDefs) {
   const d = document.createElement('div');
-  d.innerHTML = `<span>${name}</span><b>–</b>`;
+  d.innerHTML = `<span>${name}</span><b>-</b>`;
   readouts.appendChild(d);
   readoutEls[id] = d.querySelector('b')!;
 }
@@ -282,7 +282,7 @@ function updateReadouts() {
   readoutEls.rate.textContent = `${Math.abs(m.yawRate).toFixed(2)} °/s${dirLabel(m.yawRate, 0.05)}`;
   readoutEls.std.textContent = `${stdBank(m.speed).toFixed(1)}°`;
   readoutEls.t360.textContent =
-    Math.abs(m.yawRate) < 0.05 ? '—' : `${(360 / Math.abs(m.yawRate) / 60).toFixed(2)} dk`;
+    Math.abs(m.yawRate) < 0.05 ? '-' : `${(360 / Math.abs(m.yawRate) / 60).toFixed(2)} dk`;
   readoutEls.roll.textContent = `${Math.abs(m.rollRate).toFixed(1)} °/s${dirLabel(m.rollRate, 0.2)}`;
   readoutEls.latg.textContent = `${fmtSigned(m.lateralG, 2)} g`;
   const hdg = (((m.heading * 180) / Math.PI) % 360 + 360) % 360;

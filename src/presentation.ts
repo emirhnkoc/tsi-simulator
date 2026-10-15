@@ -15,14 +15,14 @@ export interface PresStep {
 export const PRES_STEPS: PresStep[] = [
   {
     title: '1 · Ne görüyoruz?',
-    text: 'Soldaki Turn Coordinator, sağdaki Turn-and-Slip göstergesi. İkisi de dönüş hızını (iğne) ve dengeyi (top) gösterir; ikisi de cayro ile çalışır.',
+    text: 'Üstteki Turn Coordinator, alttaki Turn-and-Slip göstergesi. İkisi de dönüş hızını (iğne) ve dengeyi (top) gösterir; ikisi de cayro ile çalışır.',
     scenario: 'level',
     cam: 'chase',
     view: 'aircraft',
   },
   {
     title: '2 · Standart dönüş',
-    text: "3°/s dönüş hızı iğneyi tam standart işaretine getirir. Bu hızla 360° iki dakika sürer — göstergedeki '2 MIN' yazısının anlamı budur.",
+    text: "3°/s dönüş hızı iğneyi tam standart işaretine getirir. Bu hızla 360° iki dakika sürer. Göstergedeki '2 MIN' yazısının anlamı budur.",
     scenario: 'stdR',
     cam: 'chase',
     view: 'aircraft',
@@ -36,7 +36,7 @@ export const PRES_STEPS: PresStep[] = [
   },
   {
     title: '4 · Slip (kayma)',
-    text: "Yatış fazla, rudder yetersiz: top dönüşün içine kayar. Düzeltme topun olduğu tarafa rudder vermektir — 'step on the ball'.",
+    text: "Yatış fazla, rudder yetersiz: top dönüşün içine kayar. Düzeltme topun olduğu tarafa rudder vermektir: 'step on the ball'.",
     scenario: 'slip',
     cam: 'chase',
     view: 'aircraft',
@@ -57,7 +57,7 @@ export const PRES_STEPS: PresStep[] = [
   },
   {
     title: '7 · İki göstergenin farkı',
-    text: "TC'nin cayrosu 30° eğik olduğu için roll hızını da algılar ve yatış başlar başlamaz tepki verir. T&S yalnızca gerçek yaw oluşunca yetişir — aradaki farkı yavaş çekimde izleyin.",
+    text: "TC'nin cayrosu 30° eğik olduğu için roll hızını da algılar ve yatış başlar başlamaz tepki verir. T&S yalnızca gerçek yaw oluşunca yetişir. Aradaki farkı yavaş çekimde izleyin.",
     scenario: 'roll',
     cam: 'chase',
     view: 'aircraft',

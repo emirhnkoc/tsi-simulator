@@ -168,7 +168,7 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .sliders b { color: var(--accent); }
 input[type='range'] { width: 100%; accent-color: var(--accent); }
 
-.playback { display: flex; flex-direction: column; gap: 6px; }
+.playback { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
 .playback button, #b-show {
   background: #222934;
   border: 1px solid var(--line);
