@@ -59,6 +59,7 @@ function setView(v: View) {
   setActive('#view-tabs', 'view', v);
   $('#cam-tabs').classList.toggle('hidden', v !== 'aircraft');
   $('#mech-tabs').classList.toggle('hidden', v !== 'mechanism');
+  $('#mech-opts').classList.toggle('hidden', v !== 'mechanism');
   labelRenderer.domElement.classList.toggle('hidden', v !== 'mechanism');
   mech.controls.enabled = v === 'mechanism';
   // İki orbit kontrolü aynı canvas'ı paylaşır: yalnızca aktif görünümünki açık
@@ -84,6 +85,14 @@ function setMech(t: MechType) {
 document.querySelectorAll<HTMLButtonElement>('#mech-tabs button').forEach((b) =>
   b.addEventListener('click', () => setMech(b.dataset.mech as MechType)),
 );
+
+const bLabels = $('#b-labels');
+function setLabels(v: boolean) {
+  mech.setLabelsVisible(v);
+  bLabels.classList.toggle('active', v);
+}
+bLabels.addEventListener('click', () => setLabels(!mech.labelsVisible));
+
 setView('aircraft');
 
 // ---- Senaryolar ----
@@ -106,21 +115,51 @@ function runScenario(id: string) {
 }
 setActive('#scenarios', 'id', activeScenario);
 
-// ---- Sunum modu (P): 8 adımlık ders turu ----
+// ---- Sunum modu (P): 2 perdeli, 13 adımlık sinematik ders turu ----
 let presIndex = -1;
+const presDotsHost = $('#pres-dots');
+const presPrevBtn = $<HTMLButtonElement>('#pres-prev');
+const presNextBtn = $<HTMLButtonElement>('#pres-next');
+const presExitBtn = $<HTMLButtonElement>('#pres-exit');
+const presActEl = $('#pres-act');
+
+const presDotButtons: HTMLButtonElement[] = PRES_STEPS.map((st, idx) => {
+  const dot = document.createElement('button');
+  dot.className = `pres-dot ${st.act === 'Mekanizma' ? 'mech' : ''}`.trim();
+  dot.title = st.title;
+  dot.addEventListener('click', () => applyPresStep(idx));
+  presDotsHost.appendChild(dot);
+  return dot;
+});
 
 function applyPresStep(i: number) {
   presIndex = Math.max(0, Math.min(PRES_STEPS.length - 1, i));
   const st = PRES_STEPS[presIndex];
+  model.target.speed = 100;
   if (st.scenario) runScenario(st.scenario);
+  if (st.customApply) {
+    activeScenario = '';
+    setActive('#scenarios', 'id', '');
+    st.customApply(model);
+  }
   if (st.view) setView(st.view);
   if (st.cam) setCam(st.cam);
   if (st.mech) setMech(st.mech);
+
+  mech.setCinematicShot(st.shot ?? null);
+
   slow = !!st.slow;
   updatePlayback();
+
+  presActEl.textContent = st.act === 'Mekanizma' ? '2. Perde · Mekanizma' : '1. Perde · Uçuş';
+  presActEl.classList.toggle('mech', st.act === 'Mekanizma');
   $('#pres-title').textContent = st.title;
   $('#pres-text').textContent = st.text;
-  $('#pres-count').textContent = `${presIndex + 1}/${PRES_STEPS.length}`;
+  $('#pres-count').textContent = `${presIndex + 1} / ${PRES_STEPS.length}`;
+
+  presPrevBtn.disabled = presIndex === 0;
+  presNextBtn.disabled = presIndex === PRES_STEPS.length - 1;
+  presDotButtons.forEach((d, idx) => d.classList.toggle('active', idx === presIndex));
 }
 
 function enterPresentation() {
@@ -135,6 +174,9 @@ function enterPresentation() {
 
 function exitPresentation() {
   presIndex = -1;
+  mech.setCinematicShot(null);
+  slow = false;
+  updatePlayback();
   $('#app').classList.remove('presenting');
   $('#pres-bar').classList.add('hidden');
   const b = $('#b-pres');
@@ -142,6 +184,9 @@ function exitPresentation() {
   b.textContent = '🎤 Sunum';
 }
 $('#b-pres').addEventListener('click', () => (presIndex >= 0 ? exitPresentation() : enterPresentation()));
+presPrevBtn.addEventListener('click', () => applyPresStep(presIndex - 1));
+presNextBtn.addEventListener('click', () => applyPresStep(presIndex + 1));
+presExitBtn.addEventListener('click', exitPresentation);
 
 // ---- Slider'lar ----
 const sBank = $<HTMLInputElement>('#s-bank');
@@ -241,6 +286,7 @@ window.addEventListener('keydown', (e) => {
     setCam(next);
   }
   else if (k === 't') setMech(mech.type === 'tns' ? 'tc' : 'tns');
+  else if (k === 'l') setLabels(!mech.labelsVisible);
 });
 
 // ---- Sayısal değerler ----
@@ -309,7 +355,7 @@ function frame() {
     renderer.render(aircraft.scene, aircraft.camera);
   } else {
     aircraft.update(model, simDt, realDt); // iz ve konum devam etsin
-    mech.update(model, simDt);
+    mech.update(model, simDt, realDt);
     renderer.render(mech.scene, mech.camera);
     labelRenderer.render(mech.scene, mech.camera);
   }
@@ -331,14 +377,18 @@ function frame() {
   if (q.get('mech') === 'tc') setMech('tc');
   if (q.get('cam') === 'top') setCam('top');
   else if (q.get('cam') === 'orbit') setCam('orbit');
-  if (q.get('present') === '1') enterPresentation();
+  if (q.get('present') === '1') {
+    enterPresentation();
+    const stepParam = parseInt(q.get('step') ?? '1', 10);
+    if (!isNaN(stepParam) && stepParam >= 1) applyPresStep(stepParam - 1);
+  }
   if (q.get('panel') === '0') togglePanel();
   const warm = parseFloat(q.get('t') ?? '0');
   // Belirtilen süre kadar simülasyonu önceden ilerlet
   for (let i = 0; i < warm * 60; i++) {
     model.step(1 / 60);
-    aircraft.update(model, 1 / 60, 1);
-    mech.update(model, 1 / 60);
+    aircraft.update(model, 1 / 60, 1 / 60);
+    mech.update(model, 1 / 60, 1 / 60);
   }
   updateReadouts();
 }

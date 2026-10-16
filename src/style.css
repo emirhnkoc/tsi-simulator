@@ -194,21 +194,89 @@ input[type='range'] { width: 100%; accent-color: var(--accent); }
 /* ---- Sunum modu ---- */
 .overlay.bc { bottom: 14px; left: 50%; transform: translateX(-50%); }
 #pres-bar {
-  max-width: min(920px, 90vw);
-  background: rgba(8, 12, 18, 0.88);
+  width: min(940px, 88vw);
+  background: rgba(8, 12, 18, 0.9);
   border: 1px solid var(--line);
-  border-radius: 12px;
-  padding: 10px 24px 12px;
+  border-radius: 14px;
+  padding: 12px 22px 13px;
   text-align: center;
-  backdrop-filter: blur(4px);
+  backdrop-filter: blur(8px);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.55);
 }
-#pres-bar .pres-head { display: flex; justify-content: center; align-items: baseline; gap: 12px; }
-#pres-bar b { font-size: 24px; }
-#pres-bar #pres-count { font-size: 15px; color: var(--muted); font-variant-numeric: tabular-nums; }
-#pres-bar p { margin: 6px 0; font-size: 19px; line-height: 1.45; }
-#pres-bar .pres-hint { font-size: 13px; color: var(--muted); }
+#pres-bar .pres-head { display: flex; justify-content: center; align-items: center; gap: 10px; flex-wrap: wrap; }
+#pres-bar .pres-act {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.7px;
+  padding: 3px 9px;
+  border-radius: 99px;
+  background: rgba(63, 160, 255, 0.18);
+  color: var(--accent);
+  border: 1px solid rgba(63, 160, 255, 0.4);
+}
+#pres-bar .pres-act.mech {
+  background: rgba(255, 159, 26, 0.18);
+  color: var(--warn);
+  border-color: rgba(255, 159, 26, 0.45);
+}
+#pres-bar b { font-size: 22px; }
+#pres-bar #pres-count { font-size: 14px; color: var(--muted); font-variant-numeric: tabular-nums; }
+#pres-bar p { margin: 8px 0 10px; font-size: 18px; line-height: 1.48; color: #dbe3ec; }
+#pres-bar .pres-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+#pres-bar .pres-nav button {
+  background: #222934;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 6px 14px;
+  font-size: 14px;
+  font-weight: 600;
+  transition: background 0.15s, border-color 0.15s;
+}
+#pres-bar .pres-nav button:hover:not(:disabled) {
+  border-color: var(--accent);
+  background: #2a3342;
+}
+#pres-bar .pres-nav button:disabled {
+  opacity: 0.38;
+  cursor: default;
+}
+#pres-bar .pres-nav .pres-exit {
+  color: #ffb8b8;
+  border-color: rgba(255, 77, 77, 0.35);
+}
+#pres-bar .pres-dots {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+#pres-bar .pres-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 99px;
+  padding: 0;
+  border: 0;
+  background: #333c4a;
+  transition: all 0.2s;
+}
+#pres-bar .pres-dot.mech { background: #4d3d28; }
+#pres-bar .pres-dot.active {
+  width: 24px;
+  background: var(--accent);
+}
+#pres-bar .pres-dot.mech.active {
+  background: var(--warn);
+}
 #app.presenting #panel { display: none; }
 #app.presenting #gauges { width: min(58vh, 46vw); }
 #app.presenting .gauge figcaption { font-size: 18px; }
-#app.presenting .status { font-size: 34px; padding: 10px 24px; }
-#app.presenting .label3d { font-size: 17px; }
+#app.presenting .status { font-size: 32px; padding: 8px 20px; }
+#app.presenting .label3d { font-size: 16px; }
+

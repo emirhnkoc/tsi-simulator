@@ -26,15 +26,27 @@
               <button data-mech="tns" class="active">Turn &amp; Slip</button>
               <button data-mech="tc">Turn Coordinator</button>
             </div>
+            <div class="seg hidden" id="mech-opts">
+              <button id="b-labels" title="Parça isimlerini aç/kapat (L)">Parça İsimleri</button>
+            </div>
           </div>
           <div class="overlay bl">
             <div id="status" class="status coordinated">Koordineli</div>
           </div>
           <div class="overlay bc">
             <div id="pres-bar" class="hidden">
-              <div class="pres-head"><b id="pres-title"></b><span id="pres-count"></span></div>
+              <div class="pres-head">
+                <span id="pres-act" class="pres-act"></span>
+                <b id="pres-title"></b>
+                <span id="pres-count"></span>
+              </div>
               <p id="pres-text"></p>
-              <div class="pres-hint">→ sonraki · ← önceki · Q/E rudder · X rudder sıfırla · P çıkış</div>
+              <div class="pres-nav">
+                <button id="pres-prev" title="Önceki adım (Sol ok)">◀ Önceki</button>
+                <div id="pres-dots" class="pres-dots"></div>
+                <button id="pres-next" title="Sonraki adım (Sağ ok)">Sonraki ▶</button>
+                <button id="pres-exit" class="pres-exit" title="Sunumdan çık (P)">✕ Çıkış</button>
+              </div>
             </div>
           </div>
           <div class="overlay br">
