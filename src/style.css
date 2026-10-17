@@ -60,6 +60,7 @@ button { font: inherit; color: inherit; cursor: pointer; }
   color: var(--muted);
 }
 .seg button.active { background: var(--accent); color: #fff; }
+.seg button.off { background: var(--bad); color: #fff; }
 
 .status {
   font-size: 26px;

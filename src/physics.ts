@@ -51,7 +51,9 @@ export class FlightModel {
   ballVel = 0;
   lateralG = 0;
 
-  // Gyro sinyalleri (°/s, sönümlü)
+  // Gyro sinyalleri (°/s, sönümlü) ve DC elektrik beslemesi
+  electricPower = true;
+  rotorSpeed = 1;
   tnsSignal = 0;
   tcSignal = 0;
 
@@ -99,12 +101,16 @@ export class FlightModel {
       this.ballPos += this.ballVel * h;
     }
 
-    // Gyrolar
+    // DC elektrik beslemesi ve cayro rotor devri
+    const kRpm = 1 - Math.exp(-dt / 0.85);
+    this.rotorSpeed += ((this.electricPower ? 1 : 0) - this.rotorSpeed) * kRpm;
+
+    // Gyrolar (presesyon torku rotor açısal momentumu ile orantılıdır)
     const k = 1 - Math.exp(-dt / 0.25);
     // Turn & slip: yalnızca dikey eksen etrafındaki dönüş (yaw)
-    this.tnsSignal += (this.yawRate - this.tnsSignal) * k;
+    this.tnsSignal += (this.yawRate * this.rotorSpeed - this.tnsSignal) * k;
     // Turn coordinator: 30° eğik gyro roll hızını da algılar
-    const tcRaw = this.yawRate + this.rollRate * Math.tan(TC_CANT * DEG);
+    const tcRaw = (this.yawRate + this.rollRate * Math.tan(TC_CANT * DEG)) * this.rotorSpeed;
     this.tcSignal += (tcRaw - this.tcSignal) * k;
   }
 

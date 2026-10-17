@@ -16,15 +16,19 @@ const ROTOR_VIS_SPIN = 10; // rad/s, gözle takip edilebilir görsel hız
 const DIAL_Z = 3.55;
 const UP = new THREE.Vector3(0, 1, 0);
 
-// T&S tersleyici çatal-pim mekanizması geometrisi
+// T&S tersleyici çatal-pim ve damper mekanizması geometrisi
 const TNS_GIMBAL_Y = 0.34; // Yatay gimbal ekseni yüksekliği
 const TNS_SHAFT_Y = -0.24; // İğne mili yüksekliği (SVG PIVOT_Y = 168 ile birebir)
 const TNS_ARM_R = 0.36; // Gimbal merkezinden tahrik pimine mesafe (y_pin = -0.02)
 const TNS_FORK_L = 0.22; // İğne milinden tahrik pimine mesafe (y_pin - y_shaft = 0.22)
+const TNS_DASH_X = 0.8;
+const TNS_DASH_Z = 1.98;
+const TNS_ROD_LEN = 0.62; // Sabit biyel kolu uzunluğu (asla uzayıp kısalmaz)
 
-// TC sektör dişli ve pinyon mekanizması geometrisi
+// TC sektör dişli, pinyon ve damper mekanizması geometrisi
 const TC_PIVOT_Z = 0.32; // Eğik gimbal merkez z konumu
 const TC_GEAR_RATIO = 0.52; // gimbal yatma / uçak silüeti dönme oranı
+const TC_ROD_LEN = 0.76; // Sabit biyel kolu uzunluğu (asla uzayıp kısalmaz)
 
 function label(text: string, cls = '') {
   const div = document.createElement('div');
@@ -86,6 +90,7 @@ function createHelicalSpring(
   return new THREE.Mesh(geo, mat);
 }
 
+/** Yalnızca esnek yaylar (y: 0 -> 1) için iki nokta arasına germe fonksiyonu. */
 function placeBetween(obj: THREE.Object3D, a: THREE.Vector3, b: THREE.Vector3) {
   const d = b.clone().sub(a);
   const len = d.length();
@@ -94,6 +99,74 @@ function placeBetween(obj: THREE.Object3D, a: THREE.Vector3, b: THREE.Vector3) {
   if (len > 0.0001) {
     obj.quaternion.setFromUnitVectors(UP, d.divideScalar(len));
   }
+}
+
+/**
+ * Sabit uzunluklu (yerel y: 0 -> length) rijit biyel kolu oluşturur.
+ * y = 0'da krank pimine oturan mafsal halkası (eyelet), y = length'te piston pim yuvası bulunur.
+ * Ölçeği her zaman (1, 1, 1) kalır; boyu asla uzayıp kısalmaz.
+ */
+function createRigidRod(
+  length: number,
+  rodRadius: number,
+  eyeRadius: number,
+  rodMat: THREE.Material,
+  eyeMat: THREE.Material,
+): THREE.Group {
+  const g = new THREE.Group();
+
+  const lowerEye = new THREE.Mesh(
+    new THREE.CylinderGeometry(eyeRadius, eyeRadius, rodRadius * 3.4, 16).rotateZ(Math.PI / 2),
+    eyeMat,
+  );
+  g.add(lowerEye);
+
+  const shaftGeo = new THREE.CylinderGeometry(rodRadius, rodRadius, length, 12);
+  shaftGeo.translate(0, length / 2, 0);
+  const shaft = new THREE.Mesh(shaftGeo, rodMat);
+  g.add(shaft);
+
+  const upperEye = new THREE.Mesh(
+    new THREE.CylinderGeometry(eyeRadius * 0.92, eyeRadius * 0.92, rodRadius * 3.2, 16).rotateZ(
+      Math.PI / 2,
+    ),
+    eyeMat,
+  );
+  upperEye.position.y = length;
+  g.add(upperEye);
+
+  return g;
+}
+
+/**
+ * 3B Krank-Piston (Slider-Crank) Kinematiği:
+ * Krank pimi dünya konumu `pCrank`, silindir eksen başlangıcı `cylOrigin` ve silindir birim ekseni `cylAxis`
+ * verildiğinde, sabit `rodLen` uzunluğundaki biyel kolunun üst ucunun silindir ekseni üzerindeki
+ * tam konumunu (`s`) çözer (`||cylOrigin + s * cylAxis - pCrank|| = rodLen`),
+ * rijit kolu ölçeklemeden (`scale = 1,1,1`) iki nokta arasına yerleştirir ve `s` değerini döndürür.
+ */
+function solveSliderCrankAndPlaceRod(
+  rodGroup: THREE.Object3D,
+  pCrank: THREE.Vector3,
+  cylOrigin: THREE.Vector3,
+  cylAxis: THREE.Vector3,
+  rodLen: number,
+): number {
+  const d = cylOrigin.clone().sub(pCrank);
+  const b = d.dot(cylAxis);
+  const c = d.lengthSq() - rodLen * rodLen;
+  const disc = Math.max(0, b * b - c);
+  const s = -b + Math.sqrt(disc);
+
+  const pWrist = cylOrigin.clone().addScaledVector(cylAxis, s);
+  const dir = pWrist.sub(pCrank);
+  const len = dir.length();
+  rodGroup.position.copy(pCrank);
+  rodGroup.scale.set(1, 1, 1);
+  if (len > 0.0001) {
+    rodGroup.quaternion.setFromUnitVectors(UP, dir.divideScalar(len));
+  }
+  return s;
 }
 
 /** Dişli çark veya sektör dişli oluşturucu. */
@@ -201,6 +274,21 @@ function dialText(
 }
 
 /**
+ * Kadran üzerindeki OFF bayrak penceresini şeffaf kesit olarak açar;
+ * böylece arkasındaki 3B hareketli kırmızı "OFF" bayrak tamburu pencereden doğrudan görünür.
+ */
+function dialFlagCutout(x: CanvasRenderingContext2D, svgX: number, svgY: number, w = 24, h = 28) {
+  x.save();
+  x.clearRect(svgX * DS, svgY * DS, w * DS, h * DS);
+  x.fillStyle = 'rgba(12, 13, 16, 0.28)';
+  x.fillRect(svgX * DS, svgY * DS, w * DS, h * DS);
+  x.strokeStyle = '#585c64';
+  x.lineWidth = 1.8 * DS;
+  x.strokeRect(svgX * DS, svgY * DS, w * DS, h * DS);
+  x.restore();
+}
+
+/**
  * Top tüpü penceresi: 3D cam tüp ve bilyenin kadran yuvasında görünmesi için
  * çerçeve + yarı saydam fosforlu arka plan + merkez lubber çizgileri.
  */
@@ -236,6 +324,25 @@ function dialFinish(c: HTMLCanvasElement): THREE.CanvasTexture {
   const t = new THREE.CanvasTexture(c);
   t.colorSpace = THREE.SRGBColorSpace;
   return t;
+}
+
+/** 3B Red Flag üst yarı plakası için yatay kırmızı zemin üzerinde siyah "OFF" yazılı doku. */
+function createOffFlagTexture(): THREE.CanvasTexture {
+  const c = document.createElement('canvas');
+  c.width = 256;
+  c.height = 144;
+  const x = c.getContext('2d')!;
+  x.fillStyle = '#e52525';
+  x.fillRect(0, 0, 256, 144);
+  x.strokeStyle = '#7a1010';
+  x.lineWidth = 8;
+  x.strokeRect(4, 4, 248, 136);
+  x.fillStyle = '#000000';
+  x.font = "900 84px 'Segoe UI', Arial, sans-serif";
+  x.textAlign = 'center';
+  x.textBaseline = 'middle';
+  x.fillText('OFF', 128, 76);
+  return dialFinish(c);
 }
 
 /** Turn & Slip yüzü: doghouse + yan oklar, L/R üstte, iğne pivotu altta. */
@@ -282,11 +389,7 @@ function tnsFaceTexture(): THREE.CanvasTexture {
   }
   dialText(x, 'L', 92, 92, 48);
   dialText(x, 'R', 208, 92, 48);
-  x.fillStyle = '#111111';
-  x.fillRect(214 * DS, 120 * DS, 24 * DS, 30 * DS);
-  x.strokeStyle = '#666666';
-  x.lineWidth = 2 * DS;
-  x.strokeRect(214 * DS, 120 * DS, 24 * DS, 30 * DS);
+  dialFlagCutout(x, 212, 118, 24, 28);
   dialTube(x, 222);
   dialText(x, '2 MIN  TURN', 150, 260, 31);
   dialText(x, 'DC   ELEC', 150, 276, 16, '#d8d8d8');
@@ -310,6 +413,7 @@ function tcFaceTexture(): THREE.CanvasTexture {
   }
   dialText(x, 'D.C.', 150, 44, 20, '#d8d8d8');
   dialText(x, 'ELEC.', 150, 58, 20, '#d8d8d8');
+  dialFlagCutout(x, 204, 112, 24, 28);
   dialText(x, 'TURN COORDINATOR', 150, 196, 20);
   dialText(x, 'L', 84, 262, 48);
   dialText(x, 'R', 216, 262, 48);
@@ -338,8 +442,17 @@ export class MechanismView {
   private tnsSpringMesh!: THREE.Mesh;
   private tnsDashArmTip = new THREE.Object3D();
   private tnsDashPiston = new THREE.Group();
-  private tnsDashRod!: THREE.Mesh;
+  private tnsDashRod!: THREE.Group;
+  private tnsDashCylOrigin = new THREE.Vector3(TNS_DASH_X, 0, TNS_DASH_Z);
+  private tnsDashCylAxis = new THREE.Vector3(0, 1, 0);
   private tnsPointerGroup = new THREE.Group(); // Mil + çatal + karşı ağırlık + ön iğne
+  private tnsRedTerm = new THREE.Object3D();
+  private tnsBlackTerm = new THREE.Object3D();
+  private tnsRedCurve!: THREE.CatmullRomCurve3;
+  private tnsBlackCurve!: THREE.CatmullRomCurve3;
+  private tnsRedWireMesh!: THREE.Mesh;
+  private tnsBlackWireMesh!: THREE.Mesh;
+  private lastTnsWireAngle = NaN;
 
   // ---- Turn Coordinator Mekanizması ----
   private tcCantGroup = new THREE.Group(); // 30° eğik eksen grubu
@@ -347,18 +460,24 @@ export class MechanismView {
   private tcRotor = new THREE.Group();
   private tcPinionGroup = new THREE.Group(); // Pinyon mili + pinyon dişli + uçak silüeti
   private tcSpringAttach = new THREE.Object3D();
-  private tcSpringAnchor = new THREE.Vector3(0.08, 1.32, 2.08);
+  private tcSpringAnchor = new THREE.Vector3(-0.68, 1.25, 1.78);
   private tcSpringMesh!: THREE.Mesh;
   private tcGlassDashGroup = new THREE.Group(); // Edessa fotoğrafındaki eğik cam tüplü damper
   private tcDashCrank = new THREE.Object3D();
   private tcDashPiston = new THREE.Group();
-  private tcDashRod!: THREE.Mesh;
+  private tcDashRod!: THREE.Group;
+  private tcDashCylOrigin = new THREE.Vector3();
+  private tcDashCylAxis = new THREE.Vector3();
 
-  // ---- Ortak kadran ve 3B inklinometre (cam tüp + bilye) ----
+  // ---- Ortak kadran, 3B OFF Red Flag + Solenoid ve 3B inklinometre ----
   private dialMat!: THREE.MeshBasicMaterial;
   private inclinometerGroup = new THREE.Group();
   private ball!: THREE.Mesh;
   private ballYc = 3.04;
+  private offFlagAssembly = new THREE.Group();
+  private offFlagPivot = new THREE.Group();
+  private offFlagPlunger!: THREE.Mesh;
+  private offFlagLift = 1; // 1 = elektrik var (bayrak kalkık), 0 = elektrik yok (OFF bayrağı pencerede)
 
   // ---- Dinamik vektör okları ve 3B açıklamalar ----
   private spinArrow: ReturnType<typeof curvedArrow>;
@@ -374,6 +493,7 @@ export class MechanismView {
   private damperLabel: CSS2DObject;
   private springLabel: CSS2DObject;
   private auxLabel: CSS2DObject;
+  private flagLabel: CSS2DObject;
   private needleLabel: CSS2DObject;
   private inclinometerLabel: CSS2DObject;
   private spinLabel: CSS2DObject;
@@ -395,19 +515,19 @@ export class MechanismView {
     const s = this.scene;
     s.background = new THREE.Color(0x14181f);
 
-    // Zengin stüdyo aydınlatması (metal ve cam yüzeyleri öne çıkarır)
+    // Zengin stüdyo aydınlatması (metal ve cam yüzeyleri her iki yandan öne çıkarır)
     s.add(new THREE.HemisphereLight(0xf2f6ff, 0x28303d, 1.45));
     const key = new THREE.DirectionalLight(0xfff8ec, 2.3);
     key.position.set(8, 11, 8);
     s.add(key);
-    const fill = new THREE.DirectionalLight(0x9ab8ff, 1.2);
-    fill.position.set(-7, 5, 7);
+    const fill = new THREE.DirectionalLight(0x9ab8ff, 1.35);
+    fill.position.set(-8, 6, 7);
     s.add(fill);
-    const rim = new THREE.DirectionalLight(0xffe0b2, 1.0);
+    const rim = new THREE.DirectionalLight(0xffe0b2, 1.05);
     rim.position.set(3, -6, -8);
     s.add(rim);
 
-    // Yan-ön izometrik kesit açısı: kadran arkası mekanizmalar (dişli, çatal-pim, damper, yay) net görünür
+    // Yan-ön izometrik kesit açısı: kadran arkası mekanizmalar net görünür
     this.camera.position.set(9.1, 3.6, 5.4);
     this.controls = new OrbitControls(this.camera, dom);
     this.controls.target.set(0, 0.05, 0.6);
@@ -424,6 +544,7 @@ export class MechanismView {
     const mats = {
       brass: new THREE.MeshStandardMaterial({ color: 0xd8ae56, metalness: 0.78, roughness: 0.25 }),
       darkBrass: new THREE.MeshStandardMaterial({ color: 0xa8823a, metalness: 0.72, roughness: 0.35 }),
+      copper: new THREE.MeshStandardMaterial({ color: 0xc87544, metalness: 0.76, roughness: 0.28 }),
       oliveRotor: new THREE.MeshStandardMaterial({ color: 0xa49b6c, metalness: 0.64, roughness: 0.3 }),
       castAlloy: new THREE.MeshStandardMaterial({ color: 0x868e98, metalness: 0.62, roughness: 0.36 }),
       aluminum: new THREE.MeshStandardMaterial({ color: 0xc2cad4, metalness: 0.8, roughness: 0.24 }),
@@ -440,7 +561,7 @@ export class MechanismView {
       ghostCase: new THREE.MeshStandardMaterial({
         color: 0x8fa4b8,
         transparent: true,
-        opacity: 0.055,
+        opacity: 0.045,
         side: THREE.DoubleSide,
         depthWrite: false,
       }),
@@ -468,10 +589,10 @@ export class MechanismView {
       white: new THREE.MeshBasicMaterial({ color: 0xf4f4f4 }),
     };
 
-    // 1. Ortak ön gösterge çerçevesi (bezel), kesit kasa ve 3B inklinometre
+    // 1. Ortak ön gösterge çerçevesi (bezel), çift taraflı açık kesit kasa, OFF Red Flag ve 3B inklinometre
     this.buildSharedCasingAndDial(mats);
 
-    // 2. Turn-and-Slip mekanizması
+    // 2. Turn-and-Slip mekanizması (DC Elektrikli)
     this.buildTurnAndSlipMechanism(mats);
     s.add(this.tnsRoot);
 
@@ -522,6 +643,7 @@ export class MechanismView {
     this.damperLabel = label('');
     this.springLabel = label('');
     this.auxLabel = label('');
+    this.flagLabel = label('OFF uyarı bayrağı ve solenoidi', 'red');
     this.needleLabel = label('');
     this.inclinometerLabel = label('Sıvı dolu kavisli cam tüp + bilye (İnklinometre)');
     this.inclinometerLabel.position.set(1.25, -1.05, DIAL_Z + 0.12);
@@ -533,6 +655,7 @@ export class MechanismView {
       this.damperLabel,
       this.springLabel,
       this.auxLabel,
+      this.flagLabel,
       this.needleLabel,
       this.inclinometerLabel,
     );
@@ -544,6 +667,7 @@ export class MechanismView {
       this.damperLabel,
       this.springLabel,
       this.auxLabel,
+      this.flagLabel,
       this.needleLabel,
       this.inclinometerLabel,
     ];
@@ -553,8 +677,8 @@ export class MechanismView {
   }
 
   /**
-   * Ön 4-cıvatalı uçak panel flanşı, kesit silindirik gövde (alt ve arka-sol kabuk dolu,
-   * üst ve sağ-ön tamamen açık kesit), yarı saydam kadran ve 3B kavisli cam inklinometre tüpü + bilyesi.
+   * Ön 4-cıvatalı uçak panel flanşı, her iki yanı (+x ve -x) ve üstü (+y) tamamen açık
+   * kesit silindirik gövde, 3B OFF Red Flag solenoid mekanizması ve 3B kavisli cam inklinometre.
    */
   private buildSharedCasingAndDial(mats: Record<string, THREE.Material>) {
     const s = this.scene;
@@ -604,11 +728,11 @@ export class MechanismView {
     }
 
     // CylinderGeometry(...).rotateX(PI/2) dönüşümünde:
-    // theta = 0 -> alt (-y), theta = PI/2 -> sağ/ön (+x, kamera tarafı), theta = PI -> üst (+y), theta = 1.5*PI -> sol/arka (-x).
-    // Dolayısıyla thetaStart = 1.22*PI, thetaLength = 0.92*PI seçildiğinde kabuk yalnızca sol-arka ve altta kalır;
-    // üst (+y) ve kamera tarafı (+x) tamamen açık kesit olur.
-    const cutawayStart = Math.PI * 1.22;
-    const cutawayLen = Math.PI * 0.92;
+    // theta = 0 -> alt (-y), theta = PI/2 -> sağ (+x), theta = PI -> üst (+y), theta = -PI/2 -> sol (-x).
+    // Hem sağdan (+x) hem soldan (-x) hem üstten (+y) bakıldığında iç mekanizmanın hiç kapanmaması için
+    // opak kesit kabuğu yalnızca en alt tabanda (-0.16*PI .. +0.16*PI) ince bir beşik şeridi olarak bırakıyoruz.
+    const cutawayStart = -Math.PI * 0.16;
+    const cutawayLen = Math.PI * 0.32;
 
     const frontCollar = new THREE.Mesh(
       new THREE.CylinderGeometry(2.12, 2.12, 0.55, 48, 1, true, cutawayStart, cutawayLen).rotateX(
@@ -648,12 +772,91 @@ export class MechanismView {
     // Kadran yüzeyi
     this.dialMat = new THREE.MeshBasicMaterial({
       transparent: true,
-      opacity: 0.86,
+      opacity: 0.88,
       depthWrite: false,
     });
     const dial = new THREE.Mesh(new THREE.CircleGeometry(2.0, 56), this.dialMat);
     dial.position.z = DIAL_Z;
     s.add(dial);
+
+    // ---- 3B "OFF" Red Flag Tamburu ve Elektromanyetik Solenoid Mekanizması ----
+    // Gerçek Mid-Continent 1394T100 (bölünmüş kırmızı/siyah tambur bayrak) mimarisi:
+    // Pencere çerçevesi (0.32 x 0.37) dışına asla taşmayan kapalı siyah yuva içinde,
+    // yatay X ekseni etrafında dönen iki yüzeyli tambur:
+    // - Elektrik kesikken (OFF): Pencerenin ÜST YARISI kırmızı ("OFF" yazılı), ALT YARISI siyah.
+    // - Elektrik varken (ON): Tambur yatay eksende yukarı/arkaya dönerek kırmızı yüzeyi yuva içine gizler,
+    //   pencerenin tamamı siyah görünür (yamuk durmaz ve çerçeve dışına taşmaz).
+    this.offFlagAssembly.position.set(0.987, 0.24, DIAL_Z - 0.012);
+    s.add(this.offFlagAssembly);
+
+    // Pencere arkası kapalı siyah çerçeve kutusu (tam pencere boyutunda: 0.31 x 0.36)
+    const boxBack = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.35, 0.02), mats.blackHousing);
+    boxBack.position.set(0, 0, -0.17);
+    const boxTop = new THREE.Mesh(new THREE.BoxGeometry(0.31, 0.025, 0.18), mats.blackHousing);
+    boxTop.position.set(0, 0.168, -0.09);
+    const boxBot = new THREE.Mesh(new THREE.BoxGeometry(0.31, 0.025, 0.18), mats.blackHousing);
+    boxBot.position.set(0, -0.168, -0.09);
+    const boxLeft = new THREE.Mesh(new THREE.BoxGeometry(0.024, 0.36, 0.18), mats.blackHousing);
+    boxLeft.position.set(-0.145, 0, -0.09);
+    const boxRight = new THREE.Mesh(new THREE.BoxGeometry(0.024, 0.36, 0.18), mats.blackHousing);
+    boxRight.position.set(0.145, 0, -0.09);
+    // Alt yarı siyah zemin bloğu (pencerenin alt yarısı her zaman koyu siyah)
+    const lowerBlackBay = new THREE.Mesh(
+      new THREE.BoxGeometry(0.268, 0.165, 0.14),
+      mats.graphite,
+    );
+    lowerBlackBay.position.set(0, -0.078, -0.075);
+    this.offFlagAssembly.add(boxBack, boxTop, boxBot, boxLeft, boxRight, lowerBlackBay);
+
+    // Üst yarıda yatay X ekseni etrafında dönen tambur (pivot: y = +0.078, z = -0.075)
+    this.offFlagPivot.position.set(0, 0.078, -0.075);
+    this.offFlagAssembly.add(this.offFlagPivot);
+
+    const drumAxle = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.022, 0.022, 0.34, 12).rotateZ(Math.PI / 2),
+      mats.steel,
+    );
+    const drumCore = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.058, 0.058, 0.255, 20).rotateZ(Math.PI / 2),
+      mats.blackHousing,
+    );
+
+    const flagTex = createOffFlagTexture();
+    const flagFaceMat = new THREE.MeshBasicMaterial({ map: flagTex });
+    const flagDarkMat = new THREE.MeshBasicMaterial({ color: 0x14161a });
+    // Ön yüzey (+z): Kırmızı "OFF" plakası (yalnızca pencerenin üst yarısını kaplar: 0.26 x 0.142)
+    const redVane = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.142, 0.016), [
+      flagDarkMat,
+      flagDarkMat,
+      flagDarkMat,
+      flagDarkMat,
+      flagFaceMat,
+      flagDarkMat,
+    ]);
+    redVane.position.set(0, 0, 0.064);
+
+    // Alt yüzey (-y): Elektrik varken öne gelen mat siyah kapak plakası
+    const blackVane = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.016, 0.142), flagDarkMat);
+    blackVane.position.set(0, -0.064, 0);
+
+    this.offFlagPivot.add(drumAxle, drumCore, redVane, blackVane);
+
+    // Yuva arkasında elektromanyetik solenoid bobini (önden bakınca pencere dışına taşmaz, arkadan görünür)
+    const solenoidGroup = new THREE.Group();
+    solenoidGroup.position.set(0, -0.02, -0.29);
+    const solBracket = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.28, 0.16), mats.castAlloy);
+    const solCoil = new THREE.Mesh(new THREE.CylinderGeometry(0.095, 0.095, 0.22, 20), mats.copper);
+    const solCapTop = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.11, 0.025, 20), mats.brass);
+    solCapTop.position.y = 0.11;
+    const solCapBot = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.11, 0.025, 20), mats.brass);
+    solCapBot.position.y = -0.11;
+    this.offFlagPlunger = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.032, 0.032, 0.22, 12),
+      mats.steel,
+    );
+    this.offFlagPlunger.position.set(0, 0.12, 0.06);
+    solenoidGroup.add(solBracket, solCoil, solCapTop, solCapBot, this.offFlagPlunger);
+    this.offFlagAssembly.add(solenoidGroup);
 
     // 3B İnklinometre: kavisli cam tüp, uç contaları, referans telleri
     const tubeArc = 32 * DEG;
@@ -692,14 +895,13 @@ export class MechanismView {
   }
 
   /**
-   * TURN-AND-SLIP INDICATOR (FAA/EASA kesit şeması ve gerçek cihaz mimarisi):
+   * TURN-AND-SLIP INDICATOR (DC Elektrikli - Piston Pounders & R.C. Allen mimarisi):
    * - Yatay boyuna gimbal ekseni (y = +0.34)
-   * - Çevresinde 28 adet türbin çentiği bulunan ağır pirinç cayro rotoru
-   * - Arka vakum/hava jeti nozülü ve alt egzoz rakoru
-   * - Gimbal önünde büyük dairesel pirinç plaka
-   * - Dairesel plakadan aşağı inen tahrik pimi ve alt iğne milindeki
-   *   karşı ağırlıklı yukarı bakan çatal kollar
-   * - Sol kolda kalibrasyon/merkezleme yayı, sağ kolda dikey dashpot piston sönümleyici
+   * - İçten DC elektrik motorlu pürüzsüz silindirik pirinç cayro rotoru
+   * - Sağ gimbal kolu üzerinde yalıtımlı karbon fırça tutucu kol (`C62105`) ve arka DC elektrik konnektörü
+   * - Gimbal önünde büyük dairesel pirinç plaka ve T-braket
+   * - Dairesel plakadan aşağı inen tahrik pimi ve alt iğne milindeki karşı ağırlıklı çatal kollar
+   * - Sol kolda kalibrasyon/merkezleme yayı, sağ kolda sabit boylu rijit biyel kollu dikey dashpot damper
    */
   private buildTurnAndSlipMechanism(mats: Record<string, THREE.Material>) {
     const root = this.tnsRoot;
@@ -738,33 +940,42 @@ export class MechanismView {
     rearLockNut.position.set(0, TNS_GIMBAL_Y, -3.0);
     root.add(rearBoss, rearScrew, rearLockNut);
 
-    // Vakum / hava jeti nozülü
-    const nozzleGroup = new THREE.Group();
-    nozzleGroup.position.set(0, 1.9, -1.9);
-    nozzleGroup.rotation.x = 0.52;
-    const nozzleBody = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.15, 0.85, 16), mats.brass);
-    const nozzleCap = new THREE.Mesh(new THREE.CylinderGeometry(0.26, 0.22, 0.16, 16), mats.darkBrass);
-    nozzleCap.position.y = 0.44;
-    const nozzleTip = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.05, 0.55, 12), mats.brass);
-    nozzleTip.position.y = -0.58;
-    nozzleGroup.add(nozzleBody, nozzleCap, nozzleTip);
-    root.add(nozzleGroup);
-
-    // Alt vakum/egzoz çıkış rakoru
-    const exhaustGroup = new THREE.Group();
-    exhaustGroup.position.set(0, -2.18, -1.85);
-    const exNipple = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 0.5, 16), mats.brass);
-    const exHex = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.32, 0.18, 6), mats.darkBrass);
-    exHex.position.y = -0.15;
-    const exPipe = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.14, 0.55, 14), mats.brass);
-    exPipe.position.y = -0.45;
-    exhaustGroup.add(exNipple, exHex, exPipe);
-    root.add(exhaustGroup);
+    // Arka DC Elektrik Güç Konnektörü ve Kablo Girişi (Vakum nozülü yerine)
+    const tnsConnGroup = new THREE.Group();
+    tnsConnGroup.position.set(1.18, TNS_GIMBAL_Y, -2.88);
+    const connShell = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.32, 0.32, 0.48, 20).rotateX(Math.PI / 2),
+      mats.oliveRotor,
+    );
+    const connInsulator = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.22, 0.22, 0.52, 16).rotateX(Math.PI / 2),
+      mats.blackHousing,
+    );
+    for (const [px, py] of [
+      [-0.06, 0.06],
+      [0.06, -0.06],
+    ]) {
+      const pin = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.035, 0.035, 0.65, 10).rotateX(Math.PI / 2),
+        mats.brass,
+      );
+      pin.position.set(px, py, 0);
+      const boot = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.048, 0.048, 0.16, 12).rotateX(Math.PI / 2),
+        mats.graphite,
+      );
+      boot.position.set(px, py, 0.24);
+      tnsConnGroup.add(pin, boot);
+    }
+    tnsConnGroup.add(connShell, connInsulator);
+    root.add(tnsConnGroup);
 
     // Ön yatak köprüsü: hem gimbal ön yatağını hem iğne milini taşır
     const frontBridge = new THREE.Group();
     const bridgeCross = new THREE.Mesh(new THREE.BoxGeometry(3.1, 0.2, 0.14), mats.castAlloy);
     bridgeCross.position.set(0, -0.62, 1.68);
+    const bridgePillar = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.96, 0.14), mats.castAlloy);
+    bridgePillar.position.set(0, -0.14, 1.68);
     const frontBearingHousing = new THREE.Mesh(
       new THREE.CylinderGeometry(0.25, 0.25, 0.24, 20).rotateX(Math.PI / 2),
       mats.steel,
@@ -775,10 +986,10 @@ export class MechanismView {
       mats.darkBrass,
     );
     shaftSleeve.position.set(0, TNS_SHAFT_Y, 2.95);
-    frontBridge.add(bridgeCross, frontBearingHousing, shaftSleeve);
+    frontBridge.add(bridgeCross, bridgePillar, frontBearingHousing, shaftSleeve);
     root.add(frontBridge);
 
-    // ---- Yatay Gimbal Çerçevesi (`13` / `17`) ve Büyük Dairesel Ön Plaka (`30` / `38`) ----
+    // ---- Yatay Gimbal Çerçevesi ve Büyük Dairesel Ön Plaka ----
     this.tnsGimbal.position.set(0, TNS_GIMBAL_Y, 0);
     root.add(this.tnsGimbal);
 
@@ -803,6 +1014,56 @@ export class MechanismView {
       this.tnsGimbal.add(sideArm, sideBoss, sideNut, sidePin);
     }
 
+    // Sağ gimbal kolu üzerinde DC Elektrik Karbon Fırça Tutucu Kol (`Piston Pounders 1m24s.png` C62105)
+    const brushMountBlock = new THREE.Mesh(
+      new THREE.BoxGeometry(0.14, 0.32, 0.24),
+      mats.blackHousing,
+    );
+    brushMountBlock.position.set(1.21, 0, -1.28);
+    const brushSpringArm = new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.14, 0.72), mats.aluminum);
+    brushSpringArm.position.set(1.27, 0, -0.92);
+    const carbonBrushCap = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.09, 0.09, 0.16, 14).rotateZ(Math.PI / 2),
+      mats.graphite,
+    );
+    carbonBrushCap.position.set(1.22, 0, -0.58);
+
+    // Fırça bloğu arkasında kabloların lehimlendiği pirinç klemens pimleri (gimbal ile birlikte döner)
+    const termGeo = new THREE.CylinderGeometry(0.038, 0.038, 0.12, 12).rotateX(Math.PI / 2);
+    const redTermLug = new THREE.Mesh(termGeo, mats.brass);
+    redTermLug.position.set(1.22, 0.085, -1.42);
+    const blackTermLug = new THREE.Mesh(termGeo, mats.brass);
+    blackTermLug.position.set(1.22, -0.085, -1.42);
+    this.tnsRedTerm.position.set(1.22, 0.085, -1.44);
+    this.tnsBlackTerm.position.set(1.22, -0.085, -1.44);
+    this.tnsGimbal.add(
+      brushMountBlock,
+      brushSpringArm,
+      carbonBrushCap,
+      redTermLug,
+      blackTermLug,
+      this.tnsRedTerm,
+      this.tnsBlackTerm,
+    );
+
+    // Arka konnektörden sağ gimbal fırça klemenslerine uzanan esnek DC besleme kabloları
+    this.tnsRedCurve = new THREE.CatmullRomCurve3([
+      new THREE.Vector3(),
+      new THREE.Vector3(),
+      new THREE.Vector3(),
+      new THREE.Vector3(),
+    ]);
+    this.tnsBlackCurve = new THREE.CatmullRomCurve3([
+      new THREE.Vector3(),
+      new THREE.Vector3(),
+      new THREE.Vector3(),
+      new THREE.Vector3(),
+    ]);
+    this.tnsRedWireMesh = new THREE.Mesh(new THREE.BufferGeometry(), mats.wireRed);
+    this.tnsBlackWireMesh = new THREE.Mesh(new THREE.BufferGeometry(), mats.wireBlack);
+    root.add(this.tnsRedWireMesh, this.tnsBlackWireMesh);
+    this.updateTnsWires(0);
+
     const gimbalRearBar = new THREE.Mesh(new THREE.BoxGeometry(2.3, 0.34, 0.2), mats.brass);
     gimbalRearBar.position.set(0, 0, -2.25);
     const gimbalRearPin = new THREE.Mesh(
@@ -824,13 +1085,18 @@ export class MechanismView {
     plateRim.position.set(0, 0, 1.32);
     this.tnsGimbal.add(circularPlate, plateRim);
 
-    // Dairesel plaka önündeki T-braket, çift merkezleme yayı ve aşağı inen tahrik kolu
+    // Dairesel plaka önündeki merkez göbek ve yekpare T-braket (`Piston Pounders 3m32s.png`)
     const centerHub = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.2, 0.2, 0.65, 20).rotateX(Math.PI / 2),
+      new THREE.CylinderGeometry(0.22, 0.22, 0.68, 20).rotateX(Math.PI / 2),
       mats.darkBrass,
     );
-    centerHub.position.set(0, 0, 1.65);
-    this.tnsGimbal.add(centerHub);
+    centerHub.position.set(0, 0, 1.66);
+    const frontBracketPlate = new THREE.Mesh(
+      new THREE.BoxGeometry(0.46, 0.26, 0.09),
+      mats.darkBrass,
+    );
+    frontBracketPlate.position.set(0, 0, 1.98);
+    this.tnsGimbal.add(centerHub, frontBracketPlate);
 
     // Aşağı inen tahrik kolu
     const downArmLen = TNS_ARM_R + 0.1;
@@ -856,28 +1122,24 @@ export class MechanismView {
 
     // Yatay sol kol -> Kalibrasyon yayına bağlanır
     const leftBracketArm = new THREE.Mesh(new THREE.BoxGeometry(0.76, 0.13, 0.08), mats.darkBrass);
-    leftBracketArm.position.set(-0.38, 0.06, 1.94);
+    leftBracketArm.position.set(-0.38, 0.04, 1.98);
     this.tnsGimbal.add(leftBracketArm);
-    this.tnsSpringAttach.position.set(-0.72, 0.06, 1.94);
+    this.tnsSpringAttach.position.set(-0.72, 0.04, 1.98);
     this.tnsGimbal.add(this.tnsSpringAttach);
 
-    // Yatay sağ kol -> Dashpot piston koluna bağlanır
+    // Yatay sağ kol -> Dashpot biyel kolu krank pimine bağlanır
     const rightLeverArm = new THREE.Mesh(new THREE.BoxGeometry(0.84, 0.13, 0.08), mats.steel);
-    rightLeverArm.position.set(0.42, 0.0, 1.98);
-    this.tnsGimbal.add(rightLeverArm);
-    this.tnsDashArmTip.position.set(0.8, 0.0, 1.98);
+    rightLeverArm.position.set(0.42, 0.0, 1.94);
+    const tnsCrankPin = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.045, 0.045, 0.18, 12).rotateX(Math.PI / 2),
+      mats.brass,
+    );
+    tnsCrankPin.position.set(TNS_DASH_X, 0.0, TNS_DASH_Z);
+    this.tnsGimbal.add(rightLeverArm, tnsCrankPin);
+    this.tnsDashArmTip.position.set(TNS_DASH_X, 0.0, TNS_DASH_Z);
     this.tnsGimbal.add(this.tnsDashArmTip);
 
-    // İkiz titreşim sönümleme yayları
-    for (const sy of [-0.14, 0.16]) {
-      const miniSpring = createHelicalSpring(0.045, 0.012, 6, mats.springSteel);
-      miniSpring.position.set(-0.24, sy, 1.98);
-      miniSpring.rotation.z = -Math.PI / 2;
-      miniSpring.scale.set(1, 0.26, 1);
-      this.tnsGimbal.add(miniSpring);
-    }
-
-    // ---- T&S Türbin Çentikli Pirinç Cayro Rotoru ----
+    // ---- T&S Pürüzsüz Silindirik DC Elektrikli Cayro Rotoru ----
     this.tnsRotor.position.set(0, 0, -0.58);
     this.tnsGimbal.add(this.tnsRotor);
 
@@ -888,22 +1150,22 @@ export class MechanismView {
     this.tnsRotor.add(tnsAxle);
 
     const rotorWeb = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.95, 0.95, 0.28, 36).rotateZ(Math.PI / 2),
+      new THREE.CylinderGeometry(0.95, 0.95, 0.34, 40).rotateZ(Math.PI / 2),
       mats.darkBrass,
     );
     const rotorHub = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.32, 0.32, 0.56, 24).rotateZ(Math.PI / 2),
-      mats.brass,
+      new THREE.CylinderGeometry(0.38, 0.38, 0.62, 28).rotateZ(Math.PI / 2),
+      mats.aluminum,
     );
     this.tnsRotor.add(rotorWeb, rotorHub);
 
     const rimShape = new THREE.Shape();
-    rimShape.absarc(0, 0, 1.28, 0, Math.PI * 2, false);
+    rimShape.absarc(0, 0, 1.26, 0, Math.PI * 2, false);
     const rimHole = new THREE.Path();
     rimHole.absarc(0, 0, 0.92, 0, Math.PI * 2, true);
     rimShape.holes.push(rimHole);
     const rimGeo = new THREE.ExtrudeGeometry(rimShape, {
-      depth: 0.54,
+      depth: 0.56,
       bevelEnabled: true,
       bevelThickness: 0.03,
       bevelSize: 0.03,
@@ -914,44 +1176,38 @@ export class MechanismView {
     const rotorRim = new THREE.Mesh(rimGeo, mats.brass);
     this.tnsRotor.add(rotorRim);
 
-    const bucketCount = 28;
-    const bucketGeo = new THREE.BoxGeometry(0.5, 0.065, 0.14);
-    for (let i = 0; i < bucketCount; i++) {
-      const a = (i / bucketCount) * Math.PI * 2;
-      const bucket = new THREE.Mesh(
-        bucketGeo,
-        i === 0
-          ? new THREE.MeshStandardMaterial({ color: 0xd93829, roughness: 0.35 })
-          : mats.darkBrass,
-      );
-      bucket.position.set(0, Math.cos(a) * 1.26, Math.sin(a) * 1.26);
-      bucket.rotation.x = -a + 0.35;
-      this.tnsRotor.add(bucket);
-    }
+    // Dönüşün gözle net takip edilebilmesi için rotor yüzeyinde referans işaret şeridi
+    const refStripe = new THREE.Mesh(
+      new THREE.BoxGeometry(0.62, 0.07, 0.14),
+      new THREE.MeshStandardMaterial({ color: 0xd93829, roughness: 0.35 }),
+    );
+    refStripe.position.set(0, 1.24, 0);
+    this.tnsRotor.add(refStripe);
 
     // ---- Kalibrasyon / Merkezleme Yayı ----
     const anchorBlock = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.34, 0.24), mats.castAlloy);
     anchorBlock.position.copy(this.tnsSpringAnchor);
+    const anchorStrut = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.86, 0.14), mats.castAlloy);
+    anchorStrut.position.set(-1.48, -0.22, 1.84);
     const anchorScrew = new THREE.Mesh(
       new THREE.CylinderGeometry(0.05, 0.05, 0.42, 10).rotateZ(Math.PI / 2),
       mats.brass,
     );
     anchorScrew.position.set(-1.7, this.tnsSpringAnchor.y, this.tnsSpringAnchor.z);
-    root.add(anchorBlock, anchorScrew);
+    root.add(anchorBlock, anchorStrut, anchorScrew);
 
     this.tnsSpringMesh = createHelicalSpring(0.085, 0.02, 10, mats.springSteel);
     root.add(this.tnsSpringMesh);
 
-    // ---- Dikey Pnömatik Dashpot Silindiri ve Pistonu ----
-    const dashX = 0.8;
-    const dashZ = 1.98;
+    // ---- Dikey Pnömatik Dashpot Silindiri, Pistonu ve Sabit Boylu Biyel Kolu ----
     const dashTopY = 1.68;
     const dashCylH = 1.02;
     const dashGroup = new THREE.Group();
-    dashGroup.position.set(dashX, dashTopY - dashCylH / 2, dashZ);
+    dashGroup.position.set(TNS_DASH_X, dashTopY - dashCylH / 2, TNS_DASH_Z);
 
+    // Her iki yandan (+x ve -x) pistonun görünmesi için yalnız arka (-z) şerit + şeffaf cam gövde
     const dashBackWall = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.28, 0.28, dashCylH, 24, 1, true, Math.PI * 0.9, Math.PI * 1.05),
+      new THREE.CylinderGeometry(0.28, 0.28, dashCylH, 24, 1, true, Math.PI * 0.82, Math.PI * 0.36),
       mats.brass,
     );
     const dashGlassWall = new THREE.Mesh(
@@ -964,16 +1220,34 @@ export class MechanismView {
     dashValve.position.y = dashCylH / 2 + 0.24;
     const dashNut = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.24, 0.12, 6), mats.steel);
     dashNut.position.y = dashCylH / 2 + 0.18;
-    dashGroup.add(dashBackWall, dashGlassWall, dashCap, dashValve, dashNut);
+    // Silindiri ön gövdeye bağlayan sabit montaj braketi
+    const dashMountArm = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.12, 1.15), mats.castAlloy);
+    dashMountArm.position.set(0, dashCylH / 2 + 0.05, 0.58);
+    dashGroup.add(dashBackWall, dashGlassWall, dashCap, dashValve, dashNut, dashMountArm);
     root.add(dashGroup);
 
-    const pistonDisk = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.25, 0.18, 24), mats.graphite);
-    const pistonRing = new THREE.Mesh(new THREE.CylinderGeometry(0.256, 0.256, 0.04, 24), mats.brass);
-    this.tnsDashPiston.add(pistonDisk, pistonRing);
-    this.tnsDashPiston.position.set(dashX, 0.98, dashZ);
+    // Piston: yerel y = 0'da biyel kolu üst mafsalının oturduğu pim yuvası (`pistonStem`),
+    // yerel y = +0.14'te ana grafit piston diski bulunur -> çubuk pistona kesintisiz bağlanır!
+    const pistonStem = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.068, 0.068, 0.16, 14),
+      mats.brass,
+    );
+    pistonStem.position.y = 0.04;
+    const pistonDisk = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.25, 0.25, 0.2, 24),
+      mats.graphite,
+    );
+    pistonDisk.position.y = 0.16;
+    const pistonRing = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.256, 0.256, 0.04, 24),
+      mats.brass,
+    );
+    pistonRing.position.y = 0.16;
+    this.tnsDashPiston.add(pistonStem, pistonDisk, pistonRing);
+    this.tnsDashPiston.position.set(TNS_DASH_X, 0.96, TNS_DASH_Z);
     root.add(this.tnsDashPiston);
 
-    this.tnsDashRod = new THREE.Mesh(new THREE.CylinderGeometry(0.032, 0.032, 1, 10), mats.steel);
+    this.tnsDashRod = createRigidRod(TNS_ROD_LEN, 0.03, 0.065, mats.steel, mats.brass);
     root.add(this.tnsDashRod);
 
     // ---- Alt İğne Mili, Karşı Ağırlık, Çatal ve Ön İğne ----
@@ -1008,7 +1282,6 @@ export class MechanismView {
       this.tnsPointerGroup.add(tine);
     }
 
-
     // Kadran önündeki gerçek Turn & Slip iğnesi (doghouse uçlu, SVG ile birebir)
     const needleShape = new THREE.Shape();
     needleShape.moveTo(-0.055, 0);
@@ -1040,7 +1313,8 @@ export class MechanismView {
    * - Döküm/işlenmiş eğik gimbal beşiği: yan yatak şeritleri, vidalar, üst kemer
    * - Zeytuni-altın eloksallı elektrikli dıştan rotorlu cayro tamburu (3 yan dengeleme deliği + siyah merkez kapak)
    * - Gimbal önünden yükselen sektör dişli ve merkez uçak silüeti milindeki pinyon dişli
-   * - Üstte kalibrasyon/merkezleme yayı, önde eğik cam tüplü grafit pistonlu damper
+   * - Sol-üst şasi saplamasına bağlı, dişli çarka hiç değmeyen kalibrasyon/merkezleme yayı
+   * - Sağ-önde sabit boylu rijit biyel koluyla gimbal krank pimine bağlı eğik cam tüplü grafit pistonlu damper
    */
   private buildTurnCoordinatorMechanism(mats: Record<string, THREE.Material>) {
     const root = this.tcRoot;
@@ -1364,20 +1638,30 @@ export class MechanismView {
     sectorGear.position.set(0, 0, 0.51);
     sectorHolder.add(sectorGear);
 
-    // Kalibrasyon yayının gimbal üzerindeki bağlantı kulağı
-    this.tcSpringAttach.position.set(0.08, 0.44, 0.51);
+    // Kalibrasyon yayının gimbal üzerindeki sol bağlantı kolu (pinyon dişliden tamamen bağımsız, x = -0.68)
+    const springLeverArm = new THREE.Mesh(new THREE.BoxGeometry(0.74, 0.12, 0.09), mats.brass);
+    springLeverArm.position.set(-0.35, 0.14, 0.21);
+    const springPin = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.04, 0.04, 0.16, 12).rotateX(Math.PI / 2),
+      mats.steel,
+    );
+    springPin.position.set(-0.68, 0.18, 0.21);
+    sectorHolder.add(springLeverArm, springPin);
+    this.tcSpringAttach.position.set(-0.68, 0.18, 0.21);
     sectorHolder.add(this.tcSpringAttach);
 
-    // Yan krank pimi -> damper silindirine bağlanır
-    // local (1.18, -0.05, 1.12) -> world: x = 1.18, y ≈ -0.60, z ≈ 1.29
-    this.tcDashCrank.position.set(1.18, -0.05, 1.12);
-    this.tcGimbal.add(this.tcDashCrank);
+    // Sağ ön gimbal krank kulağı ve pimi -> damper biyel koluna bağlanır (`Edessa Aviation 1m13s.png`)
+    // local (1.14, -0.06, 1.18) -> world (dinlenme): x = 1.14, y = -0.642, z = 1.312
+    const crankEar = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.28, 0.2), mats.castAlloy);
+    crankEar.position.set(1.02, -0.06, 1.18);
     const crankPin = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.055, 0.055, 0.24, 12).rotateZ(Math.PI / 2),
+      new THREE.CylinderGeometry(0.048, 0.048, 0.22, 14).rotateZ(Math.PI / 2),
       mats.brass,
     );
-    crankPin.position.copy(this.tcDashCrank.position);
-    this.tcGimbal.add(crankPin);
+    crankPin.position.set(1.14, -0.06, 1.18);
+    this.tcGimbal.add(crankEar, crankPin);
+    this.tcDashCrank.position.set(1.14, -0.06, 1.18);
+    this.tcGimbal.add(this.tcDashCrank);
 
     // Merkez pinyon mili yatak burcu
     const pinionSleeve = new THREE.Mesh(
@@ -1419,20 +1703,31 @@ export class MechanismView {
     );
     this.tcPinionGroup.add(wing, fin, tailplane, hubPlane, hubDot);
 
-    // ---- 6. Kalibrasyon Yayı ----
-    const calBracket = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.34, 0.24), mats.castAlloy);
+    // ---- 6. Kalibrasyon Yayı (Sol-üst saplamaya bağlı, pinyon çarktan tamamen ayrı) ----
+    const calBracket = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.28, 0.24), mats.castAlloy);
     calBracket.position.copy(this.tcSpringAnchor);
+    const calCrossBar = new THREE.Mesh(new THREE.BoxGeometry(0.82, 0.14, 0.16), mats.aluminum);
+    calCrossBar.position.set(-1.05, 1.25, this.tcSpringAnchor.z);
+    const calClamp = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.15, 0.15, 0.24, 16).rotateX(Math.PI / 2),
+      mats.castAlloy,
+    );
+    calClamp.position.set(-1.42, 1.25, this.tcSpringAnchor.z);
     const calScrew = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.42, 12), mats.brass);
-    calScrew.position.set(this.tcSpringAnchor.x, this.tcSpringAnchor.y + 0.18, this.tcSpringAnchor.z);
-    root.add(calBracket, calScrew);
+    calScrew.position.set(
+      this.tcSpringAnchor.x,
+      this.tcSpringAnchor.y + 0.18,
+      this.tcSpringAnchor.z,
+    );
+    root.add(calBracket, calCrossBar, calClamp, calScrew);
 
     this.tcSpringMesh = createHelicalSpring(0.08, 0.018, 9, mats.springSteel);
     root.add(this.tcSpringMesh);
 
-    // ---- 7. Eğik Cam Tüplü Grafit Pistonlu Damper (Edessa Aviation 1m13s.png cam silindir + koyu piston) ----
-    // Alt ağzı doğrudan (1.18, -0.60, 1.29) krank pimine bakacak şekilde eksenel hizalı
-    this.tcGlassDashGroup.position.set(1.18, 0.38, 1.56);
-    this.tcGlassDashGroup.rotation.x = -0.27;
+    // ---- 7. Eğik Cam Tüplü Grafit Pistonlu Damper (`Edessa Aviation 1m13s.png`) ----
+    // Ekseni doğrudan (1.14, -0.642, 1.312) krank pimine hizalı
+    this.tcGlassDashGroup.position.set(1.14, 0.32, 1.54);
+    this.tcGlassDashGroup.rotation.x = -0.233;
     root.add(this.tcGlassDashGroup);
 
     const glassCyl = new THREE.Mesh(
@@ -1449,21 +1744,38 @@ export class MechanismView {
       mats.brass,
     );
     glassSealRing.position.y = 0.4;
-    this.tcGlassDashGroup.add(glassCyl, glassTopCap, glassSealRing);
+    const bleedScrew = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.1, 12), mats.brass);
+    bleedScrew.position.y = 0.58;
+    this.tcGlassDashGroup.add(glassCyl, glassTopCap, glassSealRing, bleedScrew);
 
-    const tcPistonBody = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.2, 0.2, 0.36, 20),
-      mats.graphite,
+    // Cam damper tüpünü sağ-üst çelik saplamaya ([1.42, 1.25]) bağlayan montaj braketi
+    const tcDashClamp = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.15, 0.15, 0.24, 16).rotateX(Math.PI / 2),
+      mats.castAlloy,
     );
+    tcDashClamp.position.set(1.42, 1.25, 1.65);
+    const tcDashStrut = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.52, 0.14), mats.aluminum);
+    tcDashStrut.position.set(1.28, 1.02, 1.65);
+    tcDashStrut.rotation.z = 0.45;
+    root.add(tcDashClamp, tcDashStrut);
+
+    // Piston: yerel y = 0'da biyel kolu üst mafsalının oturduğu pirinç pim yuvası (`tcPistonBrassStem`),
+    // yerel y = +0.20'de grafit piston gövdesi (`tcPistonBody`) yer alır -> çubuk pistona tam bağlıdır!
     const tcPistonBrassStem = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.06, 0.06, 0.14, 12),
+      new THREE.CylinderGeometry(0.068, 0.068, 0.16, 14),
       mats.brass,
     );
-    tcPistonBrassStem.position.y = -0.21;
-    this.tcDashPiston.add(tcPistonBody, tcPistonBrassStem);
+    tcPistonBrassStem.position.y = 0.04;
+    const tcPistonBody = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.2, 0.2, 0.34, 24),
+      mats.graphite,
+    );
+    tcPistonBody.position.y = 0.21;
+    this.tcDashPiston.add(tcPistonBrassStem, tcPistonBody);
     this.tcGlassDashGroup.add(this.tcDashPiston);
 
-    this.tcDashRod = new THREE.Mesh(new THREE.CylinderGeometry(0.026, 0.026, 1, 10), mats.brass);
+    // Sabit boylu (TC_ROD_LEN) rijit pirinç biyel kolu
+    this.tcDashRod = createRigidRod(TC_ROD_LEN, 0.026, 0.062, mats.brass, mats.darkBrass);
     root.add(this.tcDashRod);
   }
 
@@ -1479,6 +1791,12 @@ export class MechanismView {
     this.dialMat.map = isTC ? tcFaceTexture() : tnsFaceTexture();
     this.dialMat.needsUpdate = true;
     if (old) old.dispose();
+
+    // 3B OFF Red Flag penceresini aktif kadrana hizala
+    // TNS pencere merkezi SVG (224, 132) -> 3D (0.987, 0.24)
+    // TC pencere merkezi SVG (216, 126) -> 3D (0.88, 0.32)
+    this.offFlagAssembly.position.set(isTC ? 0.88 : 0.987, isTC ? 0.32 : 0.24, DIAL_Z - 0.012);
+    this.flagLabel.position.set(1.42, isTC ? 0.62 : 0.54, DIAL_Z - 0.15);
 
     // 3B inklinometre cam tüpü yüksekliğini kadrana hizala
     const bottomY = isTC ? 226 : 222;
@@ -1504,7 +1822,7 @@ export class MechanismView {
       this.damperLabel.position.set(1.65, 0.68, 1.35);
 
       (this.springLabel.element as HTMLDivElement).textContent = 'Kalibrasyon / merkezleme yayı';
-      this.springLabel.position.set(0, 1.85, 2.38);
+      this.springLabel.position.set(-0.95, 1.68, 1.85);
 
       (this.auxLabel.element as HTMLDivElement).textContent =
         'Sürücü devre kartı (PCB) ve konnektör';
@@ -1522,7 +1840,7 @@ export class MechanismView {
       this.axisLabel.position.set(0, 0.68, -2.85);
 
       (this.rotorLabel.element as HTMLDivElement).textContent =
-        'Yatay cayro rotoru (türbin çentikli)';
+        'Yatay DC elektrikli cayro rotoru';
       this.rotorLabel.position.set(0, 1.85, -0.65);
 
       (this.linkageLabel.element as HTMLDivElement).textContent =
@@ -1536,8 +1854,9 @@ export class MechanismView {
       (this.springLabel.element as HTMLDivElement).textContent = 'Kalibrasyon / merkezleme yayı';
       this.springLabel.position.set(-1.65, 0.08, 2.25);
 
-      (this.auxLabel.element as HTMLDivElement).textContent = 'Vakum hava jeti nozülü';
-      this.auxLabel.position.set(0, 2.45, -1.95);
+      (this.auxLabel.element as HTMLDivElement).textContent =
+        'DC elektrik fırça kolu ve güç konnektörü';
+      this.auxLabel.position.set(1.35, 0.85, -1.85);
 
       (this.needleLabel.element as HTMLDivElement).textContent =
         'İğne + karşı ağırlıklı çatal mil';
@@ -1559,6 +1878,43 @@ export class MechanismView {
   setLabelsVisible(v: boolean) {
     this.partLabelsVisible = v;
     this.applyLabelVisibility();
+  }
+
+  /**
+   * Turn-and-Slip arka DC güç konnektörü ile gimbal üzerindeki fırça klemensleri arasındaki
+   * kırmızı ve siyah besleme kablolarını gimbal eğildikçe esnek olarak günceller.
+   */
+  private updateTnsWires(tnsGimbalRad: number) {
+    if (Math.abs(tnsGimbalRad - this.lastTnsWireAngle) < 0.0002) return;
+    this.lastTnsWireAngle = tnsGimbalRad;
+
+    const c = Math.cos(tnsGimbalRad);
+    const s = Math.sin(tnsGimbalRad);
+
+    const rx = 1.22 * c - 0.085 * s;
+    const ry = TNS_GIMBAL_Y + 1.22 * s + 0.085 * c;
+    const rz = -1.43;
+
+    const bx = 1.22 * c + 0.085 * s;
+    const by = TNS_GIMBAL_Y + 1.22 * s - 0.085 * c;
+    const bz = -1.43;
+
+    const rPts = this.tnsRedCurve.points;
+    rPts[0].set(1.12, TNS_GIMBAL_Y + 0.06, -2.62);
+    rPts[1].set(Math.max(1.3, rx + 0.1), TNS_GIMBAL_Y + 0.08 + (ry - TNS_GIMBAL_Y) * 0.35, -2.22);
+    rPts[2].set(rx + 0.05, ry + 0.015, -1.76);
+    rPts[3].set(rx, ry, rz);
+
+    const bPts = this.tnsBlackCurve.points;
+    bPts[0].set(1.24, TNS_GIMBAL_Y - 0.06, -2.62);
+    bPts[1].set(Math.max(1.36, bx + 0.14), TNS_GIMBAL_Y - 0.08 + (by - TNS_GIMBAL_Y) * 0.35, -2.22);
+    bPts[2].set(bx + 0.07, by - 0.015, -1.76);
+    bPts[3].set(bx, by, bz);
+
+    this.tnsRedWireMesh.geometry.dispose();
+    this.tnsRedWireMesh.geometry = new THREE.TubeGeometry(this.tnsRedCurve, 20, 0.024, 8, false);
+    this.tnsBlackWireMesh.geometry.dispose();
+    this.tnsBlackWireMesh.geometry = new THREE.TubeGeometry(this.tnsBlackCurve, 20, 0.024, 8, false);
   }
 
   /** Sinematik kamera hedefini ayarlar; null verilirse serbest kameraya döner. */
@@ -1592,8 +1948,19 @@ export class MechanismView {
     const signal = isTC ? m.tcSignal : m.tnsSignal;
     const needleAngle = signalToAngle(signal); // Pozitif = sağ dönüş
     const needleRad = needleAngle * DEG;
+    const spinRate = ROTOR_VIS_SPIN * m.rotorSpeed;
 
-    // 1. 3B İnklinometre bilyesi: kavisli cam tüp içinde hareket eder
+    // 0. 3B "OFF" Red Flag Tamburu ve Solenoid Animasyonu
+    // Elektrik varken (m.electricPower = true) tambur yatay X ekseninde -90° dönerek
+    // kırmızı "OFF" yüzeyini kapalı siyah yuva içine gizler ve siyah yüzeyi pencereye çevirir (lift -> 1).
+    // Elektrik kesildiğinde (m.electricPower = false) tambur 0° konumuna döner; pencerenin üst yarısı
+    // kırmızı "OFF", alt yarısı siyah görünür (lift -> 0).
+    const flagGoal = m.electricPower ? 1 : 0;
+    this.offFlagLift += (flagGoal - this.offFlagLift) * (1 - Math.exp(-realDt * 12));
+    this.offFlagPivot.rotation.set(-this.offFlagLift * (Math.PI * 0.52), 0, 0);
+    this.offFlagPlunger.position.y = 0.08 + this.offFlagLift * 0.06;
+
+    // 1. 3B İnklinometre bilyesi: kavisli cam tüp içinde hareket eder (elektrikten bağımsızdır)
     const ba = clamp(m.ballPos * 0.9, -13.5, 13.5) * DEG;
     this.ball.position.x = BALL_ARC_R * Math.sin(ba);
     this.ball.position.y = this.ballYc - BALL_ARC_R * Math.cos(ba);
@@ -1604,42 +1971,56 @@ export class MechanismView {
     const tnsGimbalRad = Math.asin(sinGimbalTns);
     this.tnsGimbal.rotation.z = tnsGimbalRad;
     this.tnsPointerGroup.rotation.z = -needleRad;
-    this.tnsRotor.rotation.x -= ROTOR_VIS_SPIN * simDt;
+    this.tnsRotor.rotation.x -= spinRate * simDt;
+    this.updateTnsWires(tnsGimbalRad);
 
-    // T&S kalibrasyon yayı ve dashpot piston-kolu güncellemesi
+    // T&S kalibrasyon yayı ve sabit boylu rijit dashpot biyel kolu güncellemesi
     this.scene.updateMatrixWorld();
     const pA = new THREE.Vector3();
-    const pB = new THREE.Vector3();
 
     this.tnsSpringAttach.getWorldPosition(pA);
     placeBetween(this.tnsSpringMesh, this.tnsSpringAnchor, pA);
 
     this.tnsDashArmTip.getWorldPosition(pA);
-    const pistonY = clamp(0.98 + (pA.y - TNS_GIMBAL_Y) * 0.95, 0.76, 1.32);
-    this.tnsDashPiston.position.y = pistonY;
-    pB.set(this.tnsDashPiston.position.x, pistonY - 0.08, this.tnsDashPiston.position.z);
-    placeBetween(this.tnsDashRod, pA, pB);
+    const tnsPistonY = solveSliderCrankAndPlaceRod(
+      this.tnsDashRod,
+      pA,
+      this.tnsDashCylOrigin,
+      this.tnsDashCylAxis,
+      TNS_ROD_LEN,
+    );
+    this.tnsDashPiston.position.set(TNS_DASH_X, tnsPistonY, TNS_DASH_Z);
 
     // 3. Turn Coordinator mekanizması kinematiği
     // Sektör dişli ve pinyon kavraşması: gimbal +z yönünde yatarken pinyon -z yönünde döner
     const tcGimbalRad = needleRad * TC_GEAR_RATIO;
     this.tcGimbal.rotation.z = tcGimbalRad;
     this.tcPinionGroup.rotation.z = -needleRad;
-    this.tcRotor.rotation.x -= ROTOR_VIS_SPIN * simDt;
+    this.tcRotor.rotation.x -= spinRate * simDt;
 
     this.scene.updateMatrixWorld();
     this.tcSpringAttach.getWorldPosition(pA);
     placeBetween(this.tcSpringMesh, this.tcSpringAnchor, pA);
 
-    // TC cam tüplü damper: krank pimi hareket ettikçe grafit piston cam tüp içinde kayar
+    // TC eğik cam tüplü damper: sabit boylu rijit biyel kolu krank piminden aldığı hareketle
+    // grafit pistonu cam tüp ekseni boyunca kaydırır (çubuk boyu asla değişmez!)
     this.tcDashCrank.getWorldPosition(pA);
-    const pistonLocalY = clamp(-0.06 - Math.sin(tcGimbalRad) * 0.65, -0.32, 0.24);
-    this.tcDashPiston.position.set(0, pistonLocalY, 0);
-    this.tcGlassDashGroup.updateMatrixWorld();
-    this.tcDashPiston.getWorldPosition(pB);
-    placeBetween(this.tcDashRod, pA, pB);
+    this.tcGlassDashGroup.getWorldPosition(this.tcDashCylOrigin);
+    this.tcDashCylAxis.set(0, 1, 0).applyQuaternion(this.tcGlassDashGroup.quaternion).normalize();
+    const tcPistonLocalY = solveSliderCrankAndPlaceRod(
+      this.tcDashRod,
+      pA,
+      this.tcDashCylOrigin,
+      this.tcDashCylAxis,
+      TC_ROD_LEN,
+    );
+    this.tcDashPiston.position.set(0, tcPistonLocalY, 0);
 
-    // 4. Cayro dönüş oku konumu (aktif rotoru takip eder)
+    // 4. Cayro dönüş oku konumu (aktif rotoru takip eder; elektrik kesilip rotor durunca gizlenir)
+    const showSpin = m.rotorSpeed > 0.08;
+    this.spinArrow.group.visible = showSpin;
+    this.spinLabel.visible = showSpin;
+    this.spinArrow.mat.opacity = 0.95 * m.rotorSpeed;
     if (isTC) {
       this.tcRotor.getWorldPosition(pA);
       this.spinHolder.position.copy(pA).add(new THREE.Vector3(-1.32, 0, 0));

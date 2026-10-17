@@ -93,6 +93,21 @@ function setLabels(v: boolean) {
 }
 bLabels.addEventListener('click', () => setLabels(!mech.labelsVisible));
 
+const bPower = $('#b-power');
+function syncPowerUI() {
+  const on = model.electricPower;
+  bPower.classList.toggle('off', !on);
+  bPower.textContent = on ? '⚡ Elektrik: Açık' : '⚡ Elektrik: OFF';
+}
+function togglePower(force?: boolean) {
+  model.electricPower = force ?? !model.electricPower;
+  syncPowerUI();
+}
+bPower.addEventListener('click', () => {
+  // Sunumun otomatik elektrik döngüsü dışında manuel müdahalede betik elektrigini ezmesin
+  togglePower();
+});
+
 setView('aircraft');
 
 // ---- Senaryolar ----
@@ -115,8 +130,17 @@ function runScenario(id: string) {
 }
 setActive('#scenarios', 'id', activeScenario);
 
-// ---- Sunum modu (P): 2 perdeli, 13 adımlık sinematik ders turu ----
+// ---- Sunum modu (P): 2 perdeli, 14 adımlık sinematik ders turu ----
 let presIndex = -1;
+let prePresState: {
+  scenario: string;
+  targetBank: number;
+  targetRudder: number;
+  targetSpeed: number;
+  electricPower: boolean;
+  slow: boolean;
+} | null = null;
+
 const presDotsHost = $('#pres-dots');
 const presPrevBtn = $<HTMLButtonElement>('#pres-prev');
 const presNextBtn = $<HTMLButtonElement>('#pres-next');
@@ -135,13 +159,22 @@ const presDotButtons: HTMLButtonElement[] = PRES_STEPS.map((st, idx) => {
 function applyPresStep(i: number) {
   presIndex = Math.max(0, Math.min(PRES_STEPS.length - 1, i));
   const st = PRES_STEPS[presIndex];
+  // Önceki adımdan kalan betik, rudder veya güç durumunu temizle
+  model.script = undefined;
+  model.rollRateLimit = 15;
+  model.target.bank = 0;
+  model.target.rudder = 0;
   model.target.speed = 100;
+  model.electricPower = true;
+  model.rotorSpeed = 1;
   if (st.scenario) runScenario(st.scenario);
   if (st.customApply) {
     activeScenario = '';
     setActive('#scenarios', 'id', '');
     st.customApply(model);
   }
+  syncPowerUI();
+  syncSliders();
   if (st.view) setView(st.view);
   if (st.cam) setCam(st.cam);
   if (st.mech) setMech(st.mech);
@@ -164,6 +197,16 @@ function applyPresStep(i: number) {
 
 function enterPresentation() {
   (document.activeElement as HTMLElement | null)?.blur?.();
+  if (presIndex < 0) {
+    prePresState = {
+      scenario: activeScenario,
+      targetBank: model.target.bank,
+      targetRudder: model.target.rudder,
+      targetSpeed: model.target.speed,
+      electricPower: model.electricPower,
+      slow,
+    };
+  }
   $('#app').classList.add('presenting');
   $('#pres-bar').classList.remove('hidden');
   const b = $('#b-pres');
@@ -174,8 +217,33 @@ function enterPresentation() {
 
 function exitPresentation() {
   presIndex = -1;
+  // Sunum adımlarının otomatik döngü betiklerini (ör. 8. adımdaki rudder salınımı,
+  // 14. adımdaki elektrik aç/kapa döngüsü) derhal durdur ve sunum öncesi duruma dön
+  model.script = undefined;
+  model.rollRateLimit = 15;
+  if (prePresState) {
+    model.target.speed = prePresState.targetSpeed;
+    model.electricPower = prePresState.electricPower;
+    model.rotorSpeed = prePresState.electricPower ? 1 : 0;
+    slow = prePresState.slow;
+    if (prePresState.scenario) {
+      runScenario(prePresState.scenario);
+    } else {
+      activeScenario = '';
+      setActive('#scenarios', 'id', '');
+      model.target.bank = prePresState.targetBank;
+      model.target.rudder = prePresState.targetRudder;
+    }
+    prePresState = null;
+  } else {
+    model.electricPower = true;
+    model.rotorSpeed = 1;
+    slow = false;
+    runScenario('level');
+  }
+  syncPowerUI();
+  syncSliders();
   mech.setCinematicShot(null);
-  slow = false;
   updatePlayback();
   $('#app').classList.remove('presenting');
   $('#pres-bar').classList.add('hidden');
@@ -287,6 +355,7 @@ window.addEventListener('keydown', (e) => {
   }
   else if (k === 't') setMech(mech.type === 'tns' ? 'tc' : 'tns');
   else if (k === 'l') setLabels(!mech.labelsVisible);
+  else if (k === 'f') togglePower();
 });
 
 // ---- Sayısal değerler ----
@@ -347,8 +416,8 @@ function frame() {
   const simDt = paused ? 0 : realDt * (slow ? SLOW_FACTOR : 1);
 
   model.step(simDt);
-  tc.update(model.tcSignal, model.ballPos);
-  tns.update(model.tnsSignal, model.ballPos);
+  tc.update(model.tcSignal, model.ballPos, model.electricPower);
+  tns.update(model.tnsSignal, model.ballPos, model.electricPower);
 
   if (view === 'aircraft') {
     aircraft.update(model, simDt, realDt);
@@ -365,6 +434,7 @@ function frame() {
     readoutTimer = 0;
     updateReadouts();
     syncSliders();
+    syncPowerUI();
   }
   requestAnimationFrame(frame);
 }
@@ -377,6 +447,11 @@ function frame() {
   if (q.get('mech') === 'tc') setMech('tc');
   if (q.get('cam') === 'top') setCam('top');
   else if (q.get('cam') === 'orbit') setCam('orbit');
+  if (q.get('power') === '0') {
+    model.electricPower = false;
+    model.rotorSpeed = 0;
+    syncPowerUI();
+  }
   if (q.get('present') === '1') {
     enterPresentation();
     const stepParam = parseInt(q.get('step') ?? '1', 10);
@@ -395,4 +470,5 @@ function frame() {
 
 updatePlayback();
 syncSliders();
+syncPowerUI();
 requestAnimationFrame(frame);

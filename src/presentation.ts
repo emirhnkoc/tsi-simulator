@@ -151,8 +151,8 @@ export const PRES_STEPS: PresStep[] = [
   },
   {
     act: 'Mekanizma',
-    title: '9 · Turn & Slip: Yatay Cayro ve Presesyon',
-    text: 'Vakum hava jeti nozülü, pirinç rotorun çevresindeki 28 türbin çentiğine hava üfleyerek rotoru döndürür. Uçak sağa yaw yaptığında cayro 90° faz farkıyla presesyon yapar ve gimbalın üstü sola yatar.',
+    title: '9 · Turn & Slip: Yatay Elektrikli Cayro ve Presesyon',
+    text: 'Gösterge içindeki DC elektrik motoru (fırça kolu ve arka güç konnektörü üzerinden beslenerek) yatay eksendeki ağır pirinç rotoru yüksek devirle döndürür. Uçak sağa yaw yaptığında cayro 90° faz farkıyla presesyon yapar ve gimbalın üstü sola yatar.',
     view: 'mechanism',
     mech: 'tns',
     shot: { pos: [6.2, 2.7, -0.4], target: [0, 0.45, -0.5], drift: 0.4 },
@@ -170,7 +170,7 @@ export const PRES_STEPS: PresStep[] = [
   {
     act: 'Mekanizma',
     title: '11 · Turn & Slip: Kalibrasyon Yayı ve Pnömatik Dashpot',
-    text: 'Soldaki kalibrasyon yayı presesyona direnç göstererek sapma açısının dönüş hızıyla (rate of turn) orantılı olmasını sağlar. Sağdaki dikey dashpot pistonu ise ani sarsıntıları sönümler.',
+    text: 'Soldaki kalibrasyon yayı presesyona direnç göstererek sapma açısının dönüş hızıyla (rate of turn) orantılı olmasını sağlar. Sağdaki dikey dashpot pistonu ise sabit boylu biyel koluyla sarsıntıları sönümler.',
     view: 'mechanism',
     mech: 'tns',
     shot: { pos: [4.8, 2.1, 4.3], target: [0, 0.65, 1.98], drift: 0.3 },
@@ -198,10 +198,30 @@ export const PRES_STEPS: PresStep[] = [
   {
     act: 'Mekanizma',
     title: '13 · Turn Coordinator: Sektör-Pinyon Dişlisi ve Cam Damper',
-    text: 'Eğik gimbalın önünden yükselen sektör dişli, merkez mildeki pinyon dişliyi çevirerek uçak silüetini yatırır. Yandaki cam tüplü grafit piston sarsıntıları süzerken arka PCB elektrikli rotoru sürer.',
+    text: 'Eğik gimbalın önünden yükselen sektör dişli, merkez mildeki pinyon dişliyi çevirerek uçak silüetini yatırır. Yandaki cam tüplü grafit piston sabit boylu biyel koluyla sarsıntıları süzerken arka PCB elektrikli rotoru sürer.',
     view: 'mechanism',
     mech: 'tc',
     shot: { pos: [5.1, 1.05, 3.65], target: [0.05, -0.08, 1.45], drift: 0.32 },
     customApply: turnCycleScript(8),
+  },
+  {
+    act: 'Mekanizma',
+    title: "14 · Elektrik Kesintisi ve 'OFF' Uyarı Bayrağı (Red Flag)",
+    text: "DC elektrik kesildiğinde solenoid bobini bırakır ve kadran penceresine siyah 'OFF' yazılı kırmızı bayrak (Red Flag) iner; elektrik gelince bayrak tekrar kalkar. Güç yokken cayro durduğu için dönüş ibresi merkeze düşer, ancak sıvı tüpteki top elektrikten bağımsız çalışmaya devam eder!",
+    view: 'mechanism',
+    mech: 'tc',
+    shot: { pos: [3.6, 0.95, 6.4], target: [0.45, 0.15, 3.25], drift: 0.25 },
+    customApply: (m) => {
+      m.rollRateLimit = 14;
+      m.target.bank = stdBank(m.target.speed) + 6;
+      m.target.rudder = -0.35; // Topun canlı çalıştığını göstermek için hafif slip
+      m.electricPower = false;
+      let t = 0;
+      m.script = (mm, dt) => {
+        t = (t + dt) % 10.0;
+        mm.electricPower = t >= 5.5;
+        return true;
+      };
+    },
   },
 ];

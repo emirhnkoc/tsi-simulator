@@ -77,12 +77,37 @@ function polar(cx: number, cy: number, r: number, deg: number) {
   return [cx + r * Math.cos(a), cy + r * Math.sin(a)];
 }
 
+function flagWindow(id: string, x: number, y: number, w = 24, h = 28) {
+  const pad = 2;
+  const fw = w - pad * 2;
+  const fh = Math.round(h * 0.46); // Üst yarı: kırmızı OFF bayrağı, alt yarı: siyah
+  const fx = x + pad;
+  const fy = y + pad;
+  const cx = fx + fw / 2;
+  const cy = fy + fh / 2 + 3.1;
+  return `
+    <clipPath id="${id}-flag-clip">
+      <rect x="${fx}" y="${fy}" width="${fw}" height="${h - pad * 2}" rx="1"/>
+    </clipPath>
+    <rect x="${x}" y="${y}" width="${w}" height="${h}" rx="2" fill="#0d0e11" stroke="#555" stroke-width="2"/>
+    <rect x="${fx}" y="${fy}" width="${fw}" height="${h - pad * 2}" fill="#16181d"/>
+    <g clip-path="url(#${id}-flag-clip)">
+      <g id="${id}-flag" transform="translate(0 -${fh + 3})" style="transition: transform 0.26s cubic-bezier(0.22, 1, 0.36, 1)">
+        <rect x="${fx}" y="${fy}" width="${fw}" height="${fh}" rx="1" fill="#e52525"/>
+        <line x1="${fx}" y1="${fy + fh}" x2="${fx + fw}" y2="${fy + fh}" stroke="#08090b" stroke-width="1.2"/>
+        <text x="${cx}" y="${cy}" fill="#000000" font-family="'Segoe UI', Arial, sans-serif" font-weight="900" font-size="8.6" text-anchor="middle" letter-spacing="0.2">OFF</text>
+      </g>
+    </g>
+    <rect x="${x}" y="${y}" width="${w}" height="${h}" rx="2" fill="none" stroke="#585c64" stroke-width="1.8"/>`;
+}
+
 // ---- Turn Coordinator (Figure 5-98) -----------------------------------------
 
 export class TurnCoordinatorGauge {
   readonly el: HTMLDivElement;
   private plane: SVGGElement;
   private ball: SVGGElement;
+  private flag: SVGGElement;
   private static BALL_Y = 226;
 
   constructor() {
@@ -91,9 +116,9 @@ export class TurnCoordinatorGauge {
     for (const deg of [0, STD_MARK_DEG]) {
       // sağ taraf (aşağı doğru = pozitif açı) ve sol taraf (ayna)
       for (const side of [1, -1]) {
-        const a = side === 1 ? deg : 180 - deg;
-        const [x1, y1] = polar(150, 150, 114, a);
-        const [x2, y2] = polar(150, 150, 135, a);
+        const a = (side === 1 ? deg : 180 - deg) * (Math.PI / 180);
+        const [x1, y1] = polar(150, 150, 114, a / (Math.PI / 180));
+        const [x2, y2] = polar(150, 150, 135, a / (Math.PI / 180));
         marks.push(
           `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="#fff" stroke-width="7"/>`,
         );
@@ -108,6 +133,7 @@ export class TurnCoordinatorGauge {
         ${marks.join('')}
         <text x="150" y="44" class="g-small" text-anchor="middle">D.C.</text>
         <text x="150" y="58" class="g-small" text-anchor="middle">ELEC.</text>
+        ${flagWindow(id, 204, 112, 24, 28)}
         <text x="84" y="262" class="g-big" text-anchor="middle">L</text>
         <text x="216" y="262" class="g-big" text-anchor="middle">R</text>
         <text x="150" y="196" class="g-mid" text-anchor="middle">TURN COORDINATOR</text>
@@ -125,13 +151,15 @@ export class TurnCoordinatorGauge {
       </svg>`;
     this.plane = this.el.querySelector(`#${id}-plane`)!;
     this.ball = this.el.querySelector(`#${id}-ballg`)!;
-    this.update(0, 0);
+    this.flag = this.el.querySelector(`#${id}-flag`)!;
+    this.update(0, 0, true);
   }
 
-  update(signal: number, ballDeg: number) {
+  update(signal: number, ballDeg: number, powered = true) {
     const angle = signalToAngle(signal);
     this.plane.setAttribute('transform', `rotate(${angle.toFixed(2)} 150 150)`);
     placeBall(this.ball, TurnCoordinatorGauge.BALL_Y, ballDeg);
+    this.flag.setAttribute('transform', powered ? 'translate(0 -16)' : 'translate(0 0)');
   }
 }
 
@@ -141,6 +169,7 @@ export class TurnSlipGauge {
   readonly el: HTMLDivElement;
   private needle: SVGGElement;
   private ball: SVGGElement;
+  private flag: SVGGElement;
   private static BALL_Y = 222;
   private static PIVOT_Y = 168;
 
@@ -167,7 +196,7 @@ export class TurnSlipGauge {
         ${marks.join('')}
         <text x="92" y="92" class="g-big" text-anchor="middle">L</text>
         <text x="208" y="92" class="g-big" text-anchor="middle">R</text>
-        <rect x="214" y="120" width="24" height="30" fill="#111" stroke="#666" stroke-width="2"/>
+        ${flagWindow(id, 212, 118, 24, 28)}
         ${tube(id, TurnSlipGauge.BALL_Y)}
         <text x="150" y="260" class="g-label" text-anchor="middle">2 MIN  TURN</text>
         <text x="150" y="276" class="g-tiny" text-anchor="middle">DC   ELEC</text>
@@ -180,15 +209,17 @@ export class TurnSlipGauge {
       </svg>`;
     this.needle = this.el.querySelector(`#${id}-needle`)!;
     this.ball = this.el.querySelector(`#${id}-ballg`)!;
-    this.update(0, 0);
+    this.flag = this.el.querySelector(`#${id}-flag`)!;
+    this.update(0, 0, true);
   }
 
-  update(signal: number, ballDeg: number) {
+  update(signal: number, ballDeg: number, powered = true) {
     const angle = signalToAngle(signal);
     this.needle.setAttribute(
       'transform',
       `rotate(${angle.toFixed(2)} 150 ${TurnSlipGauge.PIVOT_Y})`,
     );
     placeBall(this.ball, TurnSlipGauge.BALL_Y, ballDeg);
+    this.flag.setAttribute('transform', powered ? 'translate(0 -16)' : 'translate(0 0)');
   }
 }
