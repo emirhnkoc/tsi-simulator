@@ -458,12 +458,22 @@ function frame() {
     if (!isNaN(stepParam) && stepParam >= 1) applyPresStep(stepParam - 1);
   }
   if (q.get('panel') === '0') togglePanel();
+  if (q.get('pause') === '1') paused = true;
   const warm = parseFloat(q.get('t') ?? '0');
   // Belirtilen süre kadar simülasyonu önceden ilerlet
   for (let i = 0; i < warm * 60; i++) {
     model.step(1 / 60);
     aircraft.update(model, 1 / 60, 1 / 60);
     mech.update(model, 1 / 60, 1 / 60);
+  }
+  if (q.get('cam') === 'orbit' && (q.has('ox') || q.has('oy') || q.has('oz'))) {
+    const ox = parseFloat(q.get('ox') ?? '6');
+    const oy = parseFloat(q.get('oy') ?? '3');
+    const oz = parseFloat(q.get('oz') ?? '6');
+    aircraft.update(model, 0, 0.016);
+    const t = aircraft.controls.target;
+    aircraft.camera.position.set(t.x + ox, t.y + oy, t.z + oz);
+    aircraft.controls.update();
   }
   updateReadouts();
 }

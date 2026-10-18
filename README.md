@@ -1,76 +1,149 @@
-# Turn Coordinator & Turn-and-Slip Simülatörü
+# ✈️ Turn Coordinator & Turn-and-Slip Simülatörü
 
-EASA Modül 11A (s. 5.56-5.58) konusunun sınıf sunumu için web tabanlı simülasyon.
+[![GitHub Pages Deployment](https://img.shields.io/badge/GitHub%20Pages-Canl%C4%B1%20Demo-brightgreen?logo=github)](https://emirhnkoc.github.io/tsi-simulator/)
+[![Vite](https://img.shields.io/badge/Vite-8.x-646CFF?logo=vite)](https://vitejs.dev/)
+[![Three.js](https://img.shields.io/badge/Three.js-r186-black?logo=three.js)](https://threejs.org/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.x-blue?logo=typescript)](https://www.typescriptlang.org/)
+
+**EASA Modül 11A (Uçak Aerodinamiği, Yapıları ve Sistemleri - Göstergeler s. 5.56-5.58)** ve uçuş eğitimi müfredatına uygun, havacılık öğrencileri ve meraklıları için geliştirilmiş **yüksek etkileşimli 3B web simülasyonu**.
+
+Simülatör; **Turn-and-Slip Indicator (Dönüş ve Kayış Göstergesi)** ile **Turn Coordinator (Dönüş Koordinatörü)** arasındaki mekanik, fiziksel ve operasyonel farkları canlı 3B uçak uçuş dinamiği ve şeffaf iç mekanizma modeliyle görselleştirir.
 
 🌐 **Canlı Demo (GitHub Pages):** [https://emirhnkoc.github.io/tsi-simulator/](https://emirhnkoc.github.io/tsi-simulator/)
 
-## Çalıştırma
+---
 
-```bash
-npm install
-npm run dev            # geliştirme sunucusu (http://localhost:5173)
-npm run build          # dist/        -> GitHub / kendi domain'ine yükle
-npm run build:single   # dist-single/index.html -> internetsiz, çift tıklayıp aç
-```
+## 🎯 Temel Özellikler
 
-## Kısayollar
+### 1. Canlı Gösterge Paneli
+- **Turn Coordinator**: 30° eğik gimbal ekseni sayesinde hem **Roll (Yatış)** hızını hem de **Yaw (Dönüş)** hızını birleşik olarak algılar. Minyatür uçak sembolü ve 2 dakikalık standart dönüş (Standard Rate Turn, 3°/s) indeksleri.
+- **Turn-and-Slip Indicator**: Yatay gimbal ekseni ile yalnızca **Yaw (Dönüş)** hızını algılar; yatış hareketine anlık tepki vermez. Klasik iğne göstergesi ve 2/4 dakikalık dönüş çizgileri.
+- **İnklinometre (Kayış / Savrulma Topu)**: Uçak gövdesine etki eden gerçek yanal G kuvvetlerini (merkezkaç vs. yerçekimi) sönümlü fizik formülüyle simüle eden cam tüp ve bilye.
+- **Güç Kesintisi & Red Flag Mekanizması**: Elektrik / vakum kesildiğinde gyronun devirden düşüşünü (spin-down) ve yaylı mekanizmayla açılan kırmızı ikaz bayrağını (*Power Off Flag*) tam simüle eder.
+
+### 2. Şeffaf 3B İç Mekanizma Görünümü (`Mekanizma`)
+- **Turn & Slip Mekanizması**: Boyuna yatay gimbal halkası, yüksek devirli rotor, iğneye bağlı dişli çark treni, merkezleme yayları ve hava sönümleme silindiri (*dashpot / damper piston*).
+- **Turn Coordinator Mekanizması**: Gövde eksenine göre **30° yukarı eğik** yerleştirilmiş gimbal yatağı, doğrudan mekanik bağlantı, amortisör silindiri ve elektrik motoru kablolaması.
+- **Canlı Presezyon**: Uçak yatış veya dönüşe geçtiğinde gyronun presesyon tepkisi, yayların gerilmesi ve mekanik kolların hareketi birebir incelenebilir.
+
+### 3. Ghibli & Zelda İlhamlı 3B Canlı Kırsal Dünya
+- **Güneşli ve Huzurlu Kırsal Atmosfer**: Rayleigh/Mie saçılımlı dinamik gökyüzü, rüzgârla sürüklenen hacimli kümülüs bulutları ve ferah ışıklandırma.
+- **Organik FBM 3B Arazi**: Zümrüt çayırlar, güneşli tepeler, kır çiçekleri tarlaları ve sıcak kumlu nehir kıyıları.
+- **Dalgalı 3B Su Yüzeyi**: Domain-warped FBM dalgacıkları, su altı güneş kostikleri (*caustics*) ve doğal kıyı köpükleriyle akan kıvrımlı nehir ve göl havzası.
+- **360° Alp Dağ Sıraları**: 520×16 çözünürlüklü Ridged-Multifractal dağ geometrisi ve piksel bazlı granit kayalık & kar oluğu shader'ı.
+- **Yolla Hizalı 3B Taş Kemer Köprü**: Nehir boyunca uzanan kıvrımlı asfalt yolu bağlayan, 4 dalgakıran ayağı ve 8 feneri bulunan 3 kemerli taş köprü.
+- **Detaylı 3B Tekneler ve İskeleler**: Göl ve nehirde dalgalarla salınan 12 adet yelkenli yat (ana yelken & flok), ahşap kürekli sandal ve gezi motoru; karaya sıfır ahşap marina ve iskeleler.
+- **Bölgesel Havaalanı & Yel Değirmeni**: Pist işaretlemeleri, PAPI ışıkları, taksi yolları, hangarlar, terminal, dönen fenerli kontrol kulesi ve yamaçta dönen kırsal yel değirmeni.
+- **Zengin Bitki Örtüsü**: ~1.700 adet ladin/çam ve meşe/sakura ağacı, ~2.700 çalı, ~6.800 ot/çiçek demeti ve verandali köy evleri.
+
+### 4. Detaylı 3B Uçak & Canlı Uçuş Kontrolleri
+- NACA profilli yüksek kanatlı genel havacılık uçağı (Cessna tarzı).
+- **Canlı Kontrol Yüzeyleri**: Diferansiyel aileronlar, dönüşte back-pressure oluşturan elevatör, hız 85 kt altına düştükçe kademesiz açılan Fowler flaplar ve canlı rudder / burun kayması (*sideslip*).
+- Dönen pervane diski, kanat ucu seyrüsefer lambaları ve kuyruk ikaz flaşörü.
+- Uçuş yolu yönünü gösteren vektör oku (*Track Arrow*).
+
+---
+
+## 🎮 Klavye Kısayolları
 
 | Tuş | İşlev |
-|---|---|
-| `1`-`7` | Senaryolar: Düz, Std sağ, Std sol, Slip, Skid, Roll girişi, Sadece rudder |
-| `Boşluk` | Duraklat / devam |
-| `S` | Yavaş çekim (×0.25) |
-| `H` | Alt paneli gizle / göster |
-| `M` | 3D Uçak ↔ Mekanizma |
-| `C` | Kamera: Arkadan → Üstten → Yörünge |
-| `T` | Mekanizma: Turn & Slip ↔ Turn Coordinator |
-| `P` | Sunum modu: aç / kapat |
-| `→` / `←` | Sunumda sonraki / önceki adım |
-| `Q` / `E` | Rudder trim: sol / sağ (canlı düzeltme için) |
-| `X` | Rudder'ı sıfırla |
+|:---:|:---|
+| `1` - `7` | **Senaryolar**: (1) Düz uçuş, (2) Standart sağ dönüş, (3) Standart sol dönüş, (4) Slip (kayma), (5) Skid (savrulma), (6) Roll girişi, (7) Sadece rudder |
+| `Boşluk` | Simülasyonu Duraklat / Devam ettir |
+| `S` | Yavaş çekim modu (×0.25) |
+| `H` | Alt kontrol panelini gizle / göster |
+| `M` | Görünüm geçişi: **3D Uçak** ↔ **Mekanizma** |
+| `C` | Kamera açısı: **Arkadan** → **Üstten** → **Yörünge (Serbest Mouse Orbit)** |
+| `T` | Mekanizma modunda: **Turn & Slip** ↔ **Turn Coordinator** |
+| `P` | Etkileşimli Ders / Sunum Modu: Aç / Kapat |
+| `→` / `←` | Sunum modunda sonraki / önceki slayta geç |
+| `Q` / `E` | Canlı Rudder Trim düzeltmesi (sol / sağ) |
+| `X` | Rudder'ı anında sıfırla |
 
-## URL parametreleri
+---
 
-Sunumda doğrudan istenen sahneyle açmak için kullanılır, örneğin:
+## 🎤 Etkileşimli Sunum Modu (Ders Turu)
 
+`P` tuşu veya arayüzdeki **🎤 Sunum** düğmesi tıklandığında 15 adımlık kapsamlı bir ders turu başlatılır:
+1. **Giriş**: Turn Coordinator ve Turn & Slip göstergelerinin havacılıktaki rolü.
+2. **Koordineli Standart Sağ Dönüş**: 3°/s dönüş hızı, 2 dakikalık tam tur ve merkezkaç kuvvetinin yerçekimiyle dengesi.
+3. **Koordineli Standart Sol Dönüş**: Simetrik dönüş mekaniği ve topun merkezde kalması.
+4. **Slip (Kayma)**: Yetersiz rudder girdisi, kanadın yatış yönüne doğru içe kayması ve topun yatış yönüne kayması.
+5. **Skid (Savrulma)**: Aşırı rudder basılması, uçağın dönüş yarıçapı dışına savrulması ve stall tehlikesi.
+6. **Roll Girişi**: Turn Coordinator'ın 30° eğik ekseni sayesinde yatış anında hemen tepki vermesi, Turn & Slip'in ise beklemesi.
+7. **Sadece Rudder**: Yatış olmadan rudder ile dönüşte iki göstergenin davranışı.
+8. **Güç Kesintisi & Red Flag**: Elektrik/vakum kesilmesinde rotorun yavaşlaması ve kırmızı bayrağın düşmesi.
+9. **İç Mekanizma: Presezyon Fiziği**: Gyroscope presezyonunun 90° yön kuralı ve gimbal hareketinin göstergeye aktarımı.
+10. **30° Eğik Gimbal Farkı**: Vektör ayrışımı: $R_x \cos 30^\circ + \Omega_y \sin 30^\circ$.
+11. **Merkezleme Yayları & Sönümleme**: Amortisör silindiri (*dashpot*) ve yay sertliğinin dönüş hızını açısal sapmaya dönüştürmesi.
+
+---
+
+## 📐 Fizik ve Matematik Modeli
+
+1. **Koordineli Dönüş Hızı ($\omega$)**:
+   $$\omega = \frac{g \cdot \tan\phi}{V}$$
+   Burada $g$ yerçekimi ivmesi, $\phi$ yatış açısı (*bank angle*), $V$ hava süratidir (*true airspeed*). Rudder girdisi bu değere $\pm 4^\circ/\text{s}$ ekler.
+
+2. **İnklinometre Top Açısı ($\theta_{\text{ball}}$)**:
+   Uçak koordinat ekseninde bilyeye etki eden bileşke kuvvet:
+   $$\theta_{\text{ball}} = \operatorname{atan2}(g \sin\phi - V\omega\cos\phi,\; g\cos\phi + V\omega\sin\phi)$$
+   Bilye hareketi ikinci dereceden sönümlü yay-kütle diferansiyel denklemi ile simüle edilir.
+
+3. **Gösterge Karşılaştırması**:
+   - **Turn-and-Slip İğnesi**:
+     $$I_{\text{TS}} \propto \omega_{\text{yaw}}$$
+   - **Turn Coordinator Minyatür Uçağı**:
+     $$I_{\text{TC}} \propto \omega_{\text{yaw}} + p \cdot \tan(30^\circ)$$
+     ($p = \text{roll rate}$, yani yatış hızı).
+
+---
+
+## 🔗 URL Parametreleri
+
+Sunumda doğrudan istenen konfigürasyonla başlatmak için URL parametreleri kullanılabilir:
+
+```text
+https://emirhnkoc.github.io/tsi-simulator/?s=roll&view=mechanism&mech=tc&panel=0
 ```
-index.html?s=roll&view=mechanism&mech=tc&panel=0
+
+| Parametre | Değerler | Açıklama |
+|---|---|---|
+| `s` | `level`, `stdR`, `stdL`, `slip`, `skid`, `roll`, `rudder` | Başlangıç uçuş senaryosu |
+| `view` | `aircraft`, `mechanism` | 3D Uçak veya Mekanizma ekranı |
+| `mech` | `ts`, `tc` | Turn & Slip veya Turn Coordinator mekanizması |
+| `cam` | `tail`, `top`, `orbit` | Kamera açısı |
+| `panel` | `0`, `1` | Alt kontrol panelinin gizli/açık olması |
+| `present` | `1` | Doğrudan Sunum Modunda başlatır |
+| `step` | `1` - `15` | Sunum modundaki belirli adıma atlar |
+| `pause` | `1` | Simülasyonu duraklatılmış başlatır |
+| `t` | `sayı (saniye)` | Simülasyonu belirtilen saniye kadar ilerletip açar |
+
+---
+
+## 🛠️ Kurulum ve Geliştirme
+
+Projeyi yerel bilgisayarınızda çalıştırmak için:
+
+```bash
+# Bağımlılıkları yükleyin
+npm install
+
+# Geliştirme sunucusunu başlatın (http://localhost:5173)
+npm run dev
+
+# Standart dağıtım derlemesi (dist/)
+npm run build
+
+# İnternetsiz açılabilen tek dosya HTML derlemesi (dist-single/index.html)
+npm run build:single
 ```
 
-- `s`: `level` | `stdR` | `stdL` | `slip` | `skid` | `roll` | `rudder`
-- `view=mechanism`, `mech=tc`, `cam=top`, `panel=0`
-- `t`: simülasyonu bu kadar saniye ileri sararak başlatır
-- `present=1`: sunum modunda açar (ör. derste projeksiyona doğrudan sunumla başla)
+> [!NOTE]
+> Projede kod veya varlık değişikliği yapıldıktan sonra hem standart (`npm run build`) hem de tek dosya (`npm run build:single`) derlemesi çalıştırılmalıdır.
 
-## Sunum modu
+---
 
-`P` tuşu (veya 🎤 Sunum düğmesi) 8 adımlık ders turunu başlatır: tanıtım → standart dönüş → koordineli dönüş → slip → skid → sadece rudder → iki göstergenin farkı (yavaş çekim) → mekanizma. Her adımda senaryo, kamera ve görünüm otomatik kurulur; altta konuyu anlatan başlık bandı belirir. `→`/`←` ile adımlar arası geçiş, `Q`/`E` ile fareye dokunmadan canlı rudder düzeltmesi yapılır. Panel gizlenir, göstergeler ve durum rozeti büyür.
+## 📄 Lisans & Atıf
 
-## Fizik modeli
-
-- Koordineli dönüş hızı: ω = g·tanφ / V. Rudder, bu değere en fazla ±4°/s ekler.
-- Top: uçak eksenindeki görünür yerçekiminin açısı, `atan2(g·sinφ − V·ω·cosφ, g·cosφ + V·ω·sinφ)`. Hareketi sönümlü yay gibi.
-- Turn & Slip iğnesi yaw hızını gösterir. Turn Coordinator ise yaw hızı + roll hızı·tan30° gösterir.
-- Standart dönüş (3°/s) iki göstergede de 20°'lik işarete karşılık gelir.
-
-## 3D model ve kontrol yüzeyleri
-
-Uçak (yüksek kanatlı, tek motorlu GA uçağı) tamamen prosedürel Three.js geometrisiyle üretilir. Kontrol yüzeyleri uçuş durumuna göre canlı hareket eder:
-
-- **Aileronlar**: yatış komutuna ve roll hızına göre diferansiyel sapar (sağa yatışta sağ yukarı, sol aşağı).
-- **Elevatör**: dönüşte gereken back-pressure kadar yukarı sapar (n = 1/cosφ); gövde de hafif burun yukarı yunuslar.
-- **Rudder**: rudder girdisiyle ±25°'ye kadar sapar; burun savrulmasıyla (görsel sideslip, tam girdide 10°) birlikte izlenir. Kırmızı firar kenarı şeridi sapmayı arkadan okunaklı kılar.
-- **Flaps**: sürat 85 kt altına indikçe kademesiz açılır (62 kt'da 25°).
-- Pervane sürate bağlı döner (yüksek devirde bulanık disk), kanat uçlarında sol kırmızı / sağ yeşil seyrüsefer lambaları, fin tepesinde yanıp sönen kırmızı ikaz feneri vardır.
-
-Bu hareketlerin tümü yalnızca görseldir; fizik/gösterge davranışını değiştirmez.
-Yüzeyler pilot girdisini gerçek zamanlı izler. Simülasyon duraklatılmışken
-bile slider oynatıldığında aileron, elevatör, rudder ve burun savrulması oynar.
-
-## Çevre
-
-- **Gökyüzü**: gradyan kubbe (zenit → ufuk), güneş diski ve rüzgarla sürüklenen 16 low-poly bulut
-- **Zemin**: tarla mozaiği + yol ağı dokusu; doku dünyada sabit kalır, hız/konum hissi verir
-- **Bitkiler**: kümelenmiş orman yamalarında 380 çam + 320 gövdeli yapraklı ağaç
-- **Yerleşim**: 36 ev (duvar + piramit çatı); bitki ve evler uçak etrafında sarılır, hiç tükenmez
-- **Gölgeler**: yumuşak (PCF) güneş gölgesi. Uçağın gölgesi zeminde izlenir, dönüşlerde oryantasyonu okutur
+Bu proje eğitim amaçlı hazırlanmış olup açık kaynak kodludur. Sivil havacılık eğitimlerinde ve sınıf sunumlarında serbestçe kullanılabilir.
