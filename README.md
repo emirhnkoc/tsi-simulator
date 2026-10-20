@@ -5,11 +5,11 @@
 [![Three.js](https://img.shields.io/badge/Three.js-r186-black?logo=three.js)](https://threejs.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.x-blue?logo=typescript)](https://www.typescriptlang.org/)
 
-**EASA Modül 11A (Uçak Aerodinamiği, Yapıları ve Sistemleri - Göstergeler s. 5.56-5.58)** ve uçuş eğitimi müfredatına uygun, havacılık öğrencileri ve meraklıları için geliştirilmiş **yüksek etkileşimli 3B web simülasyonu**.
+**EASA Modül 11A (Uçak Aerodinamiği, Yapıları ve Sistemleri - Göstergeler s. 5.56-5.58)** müfredatına uygun, havacılık öğrencileri ve meraklıları için geliştirilmiş **yüksek etkileşimli 3B web simülasyonu**.
 
 Simülatör; **Turn-and-Slip Indicator (Dönüş ve Kayış Göstergesi)** ile **Turn Coordinator (Dönüş Koordinatörü)** arasındaki mekanik, fiziksel ve operasyonel farkları canlı 3B uçak uçuş dinamiği ve şeffaf iç mekanizma modeliyle görselleştirir.
 
-🌐 **Canlı Demo (GitHub Pages):** [https://emirhnkoc.github.io/tsi-simulator/](https://emirhnkoc.github.io/tsi-simulator/)
+🌐 **Canlı Demo:** [https://emirhnkoc.github.io/tsi-simulator/](https://emirhnkoc.github.io/tsi-simulator/)
 
 ---
 
@@ -26,7 +26,7 @@ Simülatör; **Turn-and-Slip Indicator (Dönüş ve Kayış Göstergesi)** ile *
 - **Turn Coordinator Mekanizması**: Gövde eksenine göre **30° yukarı eğik** yerleştirilmiş gimbal yatağı, doğrudan mekanik bağlantı, amortisör silindiri ve elektrik motoru kablolaması.
 - **Canlı Presezyon**: Uçak yatış veya dönüşe geçtiğinde gyronun presesyon tepkisi, yayların gerilmesi ve mekanik kolların hareketi birebir incelenebilir.
 
-### 3. Ghibli & Zelda İlhamlı 3B Canlı Kırsal Dünya
+### 3. 3B Canlı Kırsal Dünya
 - **Güneşli ve Huzurlu Kırsal Atmosfer**: Rayleigh/Mie saçılımlı dinamik gökyüzü, rüzgârla sürüklenen hacimli kümülüs bulutları ve ferah ışıklandırma.
 - **Organik FBM 3B Arazi**: Zümrüt çayırlar, güneşli tepeler, kır çiçekleri tarlaları ve sıcak kumlu nehir kıyıları.
 - **Dalgalı 3B Su Yüzeyi**: Domain-warped FBM dalgacıkları, su altı güneş kostikleri (*caustics*) ve doğal kıyı köpükleriyle akan kıvrımlı nehir ve göl havzası.
@@ -123,7 +123,7 @@ https://emirhnkoc.github.io/tsi-simulator/?s=roll&view=mechanism&mech=tc&panel=0
 
 ## 🛠️ Kurulum ve Geliştirme
 
-Projeyi yerel bilgisayarınızda çalıştırmak için:
+Projeyi çalıştırmak için:
 
 ```bash
 # Bağımlılıkları yükleyin
@@ -138,12 +138,3 @@ npm run build
 # İnternetsiz açılabilen tek dosya HTML derlemesi (dist-single/index.html)
 npm run build:single
 ```
-
-> [!NOTE]
-> Projede kod veya varlık değişikliği yapıldıktan sonra hem standart (`npm run build`) hem de tek dosya (`npm run build:single`) derlemesi çalıştırılmalıdır.
-
----
-
-## 📄 Lisans & Atıf
-
-Bu proje eğitim amaçlı hazırlanmış olup açık kaynak kodludur. Sivil havacılık eğitimlerinde ve sınıf sunumlarında serbestçe kullanılabilir.
