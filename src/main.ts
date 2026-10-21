@@ -125,7 +125,8 @@ function runScenario(id: string) {
   const sc = scenarios.find((s) => s.id === id);
   if (!sc) return;
   sc.apply(model);
-  if (id === 'roll') aircraft.resetTrail();
+  // Her senaryo temiz bir izle başlasın; özellikle 4. adımdaki çember için önemli.
+  aircraft.resetTrail();
   activeScenario = id;
   setActive('#scenarios', 'id', id);
 }
@@ -140,6 +141,10 @@ let prePresState: {
   targetSpeed: number;
   electricPower: boolean;
   slow: boolean;
+  paused: boolean;
+  view: 'aircraft' | 'mechanism';
+  cam: CamMode;
+  mech: MechType;
 } | null = null;
 
 const presDotsHost = $('#pres-dots');
@@ -174,6 +179,8 @@ function applyPresStep(i: number) {
     setActive('#scenarios', 'id', '');
     st.customApply(model);
   }
+  // Her adım temiz bir uçuş iziyle başlasın (özellikle 3. ve 5. adımdaki özel betikler).
+  aircraft.resetTrail();
   syncPowerUI();
   syncSliders();
   if (st.view) setView(st.view);
@@ -206,6 +213,10 @@ function enterPresentation() {
       targetSpeed: model.target.speed,
       electricPower: model.electricPower,
       slow,
+      paused,
+      view,
+      cam: aircraft.camMode,
+      mech: mech.type,
     };
   }
   $('#app').classList.add('presenting');
@@ -213,6 +224,8 @@ function enterPresentation() {
   const b = $('#b-pres');
   b.classList.add('on');
   b.textContent = '⏹ Sunumu bitir';
+  // Sunum her zaman akıcı başlasın; çıkışta önceki duraklama durumu geri yüklenir.
+  paused = false;
   applyPresStep(0);
 }
 
@@ -223,24 +236,31 @@ function exitPresentation() {
   model.script = undefined;
   model.rollRateLimit = 15;
   if (prePresState) {
+    // Senaryoyu yeniden çalıştırmak yerine hedef durumu doğrudan geri yükle:
+    // böylece özellikle 'roll' senaryosu sunumdan çıkışta baştan başlamaz.
     model.target.speed = prePresState.targetSpeed;
     model.electricPower = prePresState.electricPower;
     model.rotorSpeed = prePresState.electricPower ? 1 : 0;
+    model.target.bank = prePresState.targetBank;
+    model.target.rudder = prePresState.targetRudder;
+    activeScenario = prePresState.scenario;
+    setActive('#scenarios', 'id', activeScenario);
     slow = prePresState.slow;
-    if (prePresState.scenario) {
-      runScenario(prePresState.scenario);
-    } else {
-      activeScenario = '';
-      setActive('#scenarios', 'id', '');
-      model.target.bank = prePresState.targetBank;
-      model.target.rudder = prePresState.targetRudder;
-    }
+    paused = prePresState.paused;
+    setMech(prePresState.mech);
+    setView(prePresState.view);
+    setCam(prePresState.cam);
+    aircraft.resetTrail();
     prePresState = null;
   } else {
     model.electricPower = true;
     model.rotorSpeed = 1;
     slow = false;
+    paused = false;
     runScenario('level');
+    setMech('tns');
+    setView('aircraft');
+    setCam('chase');
   }
   syncPowerUI();
   syncSliders();
@@ -281,6 +301,14 @@ sSpeed.addEventListener('input', () => {
   model.target.speed = parseFloat(sSpeed.value);
   if (activeScenario === 'stdR') model.target.bank = stdBank(model.target.speed);
   if (activeScenario === 'stdL') model.target.bank = -stdBank(model.target.speed);
+  if (activeScenario === 'slip') model.target.bank = stdBank(model.target.speed);
+  if (activeScenario === 'skid') {
+    model.target.bank = Math.max(stdBank(model.target.speed) - 9, 4);
+  }
+  // Roll senaryosu tamamlandıysa uçak standart dönüşte kalır; hız değişiminde yatışı güncelle.
+  if (activeScenario === 'roll' && !model.script) {
+    model.target.bank = stdBank(model.target.speed);
+  }
 });
 
 function syncSliders() {
@@ -453,19 +481,24 @@ function frame() {
     model.rotorSpeed = 0;
     syncPowerUI();
   }
+  if (q.get('pause') === '1') paused = true;
   if (q.get('present') === '1') {
     enterPresentation();
     const stepParam = parseInt(q.get('step') ?? '1', 10);
     if (!isNaN(stepParam) && stepParam >= 1) applyPresStep(stepParam - 1);
   }
   if (q.get('panel') === '0') togglePanel();
-  if (q.get('pause') === '1') paused = true;
-  const warm = parseFloat(q.get('t') ?? '0');
-  // Belirtilen süre kadar simülasyonu önceden ilerlet
-  for (let i = 0; i < warm * 60; i++) {
-    model.step(1 / 60);
-    aircraft.update(model, 1 / 60, 1 / 60);
-    mech.update(model, 1 / 60, 1 / 60);
+  // Sunum adımlarında t ön-ısıtması betiği atlatıp adımı bozabilir; bu yüzden yalnızca
+  // senaryo URL'lerinde uygula. Ayrıca aşırı büyük değerlerin tarayıcıyı kilitlemesini engelle.
+  if (q.get('present') !== '1') {
+    const warmRaw = parseFloat(q.get('t') ?? '0');
+    const warm = Number.isFinite(warmRaw) ? Math.min(600, Math.max(0, warmRaw)) : 0;
+    // Belirtilen süre kadar simülasyonu önceden ilerlet
+    for (let i = 0; i < warm * 60; i++) {
+      model.step(1 / 60);
+      aircraft.update(model, 1 / 60, 1 / 60);
+      mech.update(model, 1 / 60, 1 / 60);
+    }
   }
   if (q.get('cam') === 'orbit' && (q.has('ox') || q.has('oy') || q.has('oz'))) {
     const ox = parseFloat(q.get('ox') ?? '6');

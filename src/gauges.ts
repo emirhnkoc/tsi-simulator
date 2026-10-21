@@ -187,6 +187,12 @@ export class TurnSlipGauge {
         `<g transform="rotate(${deg} 150 ${py}) translate(150 ${py - 128})">${shape}</g>`,
       );
     }
+    // 4 dakikalık dönüş işareti: standart (2 dk) sapmanın yarısında küçük bir çentik.
+    for (const deg of [-STD_MARK_DEG / 2, STD_MARK_DEG / 2]) {
+      marks.push(
+        `<g transform="rotate(${deg} 150 ${py}) translate(150 ${py - 128})"><rect x="-1.5" y="-9" width="3" height="11" rx="1.5" fill="#d8d8d8"/></g>`,
+      );
+    }
     this.el = document.createElement('div');
     this.el.className = 'gauge-svg';
     this.el.innerHTML = `

@@ -19,7 +19,7 @@ Simülatör; **Turn-and-Slip Indicator (Dönüş ve Kayış Göstergesi)** ile *
 - **Turn Coordinator**: 30° eğik gimbal ekseni sayesinde hem **Roll (Yatış)** hızını hem de **Yaw (Dönüş)** hızını birleşik olarak algılar. Minyatür uçak sembolü ve 2 dakikalık standart dönüş (Standard Rate Turn, 3°/s) indeksleri.
 - **Turn-and-Slip Indicator**: Yatay gimbal ekseni ile yalnızca **Yaw (Dönüş)** hızını algılar; yatış hareketine anlık tepki vermez. Klasik iğne göstergesi ve 2/4 dakikalık dönüş çizgileri.
 - **İnklinometre (Kayış / Savrulma Topu)**: Uçak gövdesine etki eden gerçek yanal G kuvvetlerini (merkezkaç vs. yerçekimi) sönümlü fizik formülüyle simüle eden cam tüp ve bilye.
-- **Güç Kesintisi & Red Flag Mekanizması**: Elektrik / vakum kesildiğinde gyronun devirden düşüşünü (spin-down) ve yaylı mekanizmayla açılan kırmızı ikaz bayrağını (*Power Off Flag*) tam simüle eder.
+- **Güç Kesintisi & Red Flag Mekanizması**: DC elektrik kesildiğinde gyronun devirden düşüşünü (spin-down) ve yaylı mekanizmayla açılan kırmızı ikaz bayrağını (*Power Off Flag*) tam simüle eder.
 
 ### 2. Şeffaf 3B İç Mekanizma Görünümü (`Mekanizma`)
 - **Turn & Slip Mekanizması**: Boyuna yatay gimbal halkası, yüksek devirli rotor, iğneye bağlı dişli çark treni, merkezleme yayları ve hava sönümleme silindiri (*dashpot / damper piston*).
@@ -55,6 +55,8 @@ Simülatör; **Turn-and-Slip Indicator (Dönüş ve Kayış Göstergesi)** ile *
 | `M` | Görünüm geçişi: **3D Uçak** ↔ **Mekanizma** |
 | `C` | Kamera açısı: **Arkadan** → **Üstten** → **Yörünge (Serbest Mouse Orbit)** |
 | `T` | Mekanizma modunda: **Turn & Slip** ↔ **Turn Coordinator** |
+| `L` | Mekanizma etiketlerini göster / gizle |
+| `F` | DC elektriğini aç / kapat (OFF / Red Flag) |
 | `P` | Etkileşimli Ders / Sunum Modu: Aç / Kapat |
 | `→` / `←` | Sunum modunda sonraki / önceki slayta geç |
 | `Q` / `E` | Canlı Rudder Trim düzeltmesi (sol / sağ) |
@@ -64,18 +66,23 @@ Simülatör; **Turn-and-Slip Indicator (Dönüş ve Kayış Göstergesi)** ile *
 
 ## 🎤 Etkileşimli Sunum Modu (Ders Turu)
 
-`P` tuşu veya arayüzdeki **🎤 Sunum** düğmesi tıklandığında 15 adımlık kapsamlı bir ders turu başlatılır:
-1. **Giriş**: Turn Coordinator ve Turn & Slip göstergelerinin havacılıktaki rolü.
-2. **Koordineli Standart Sağ Dönüş**: 3°/s dönüş hızı, 2 dakikalık tam tur ve merkezkaç kuvvetinin yerçekimiyle dengesi.
-3. **Koordineli Standart Sol Dönüş**: Simetrik dönüş mekaniği ve topun merkezde kalması.
-4. **Slip (Kayma)**: Yetersiz rudder girdisi, kanadın yatış yönüne doğru içe kayması ve topun yatış yönüne kayması.
-5. **Skid (Savrulma)**: Aşırı rudder basılması, uçağın dönüş yarıçapı dışına savrulması ve stall tehlikesi.
-6. **Roll Girişi**: Turn Coordinator'ın 30° eğik ekseni sayesinde yatış anında hemen tepki vermesi, Turn & Slip'in ise beklemesi.
-7. **Sadece Rudder**: Yatış olmadan rudder ile dönüşte iki göstergenin davranışı.
-8. **Güç Kesintisi & Red Flag**: Elektrik/vakum kesilmesinde rotorun yavaşlaması ve kırmızı bayrağın düşmesi.
-9. **İç Mekanizma: Presezyon Fiziği**: Gyroscope presezyonunun 90° yön kuralı ve gimbal hareketinin göstergeye aktarımı.
-10. **30° Eğik Gimbal Farkı**: Vektör ayrışımı: $R_x \cos 30^\circ + \Omega_y \sin 30^\circ$.
-11. **Merkezleme Yayları & Sönümleme**: Amortisör silindiri (*dashpot*) ve yay sertliğinin dönüş hızını açısal sapmaya dönüştürmesi.
+`P` tuşu veya arayüzdeki **🎤 Sunum** düğmesi tıklandığında 14 adımlık kapsamlı bir ders turu başlatılır:
+1. **İki Gösterge, İki Ayrı Cihaz**: Turn Coordinator ve Turn & Slip'in ortak kasada bağımsız cayro + inklinometre barındırması.
+2. **Standart Dönüş (2 MIN = 3°/s)**: 3°/s dönüş hızı, 2 dakikalık tam tur ve standart işaret.
+3. **Kritik Yanılgı: Yatış Açısı ≠ Dönüş Hızı**: Aynı 3°/s için 75 kt'ta ~12°, 165 kt'ta ~24° yatış; hız geçişinde TC'nin roll nedeniyle kısa süre sapması.
+4. **Koordineli Dönüş ve Kuvvet Dengesi**: Yerçekimi bileşeni ile merkezkaç kuvvetinin dengesi; top merkezde, uçak izi çember.
+5. **Slip (İçe Kayma) ve 'Step on the Ball'**: Ters rudder ile yaw'un azalması, topun içe kayması ve rudder düzeltmesiyle merkezlenmesi.
+6. **Skid (Dışa Savrulma)**: Yatışa göre fazla rudder, topun dışa savrulması ve stall riski.
+7. **Roll Girişinde İki Göstergenin Farkı**: TC'nin roll'u hemen algılaması, T&S'in yaw oluşunca yetişmesi.
+8. **İnklinometre: Sıvı Dolu Cam Tüp ve Bilye**: Cayrodan bağımsız, sönümleme sıvılı tüp ve bilye.
+9. **Turn & Slip: Yatay Elektrikli Cayro ve Presesyon**: DC motorlu yatay rotor ve 90° faz farkıyla presesyon.
+10. **Turn & Slip: Dairesel Plaka ve Tersleyici Çatal-Pim**: Gimbal hareketinin çatal-pim ile iğneye aktarımı.
+11. **Turn & Slip: Kalibrasyon Yayı ve Pnömatik Dashpot**: Yay ile dönüş hızı oranı, dashpot ile sarsıntı sönümü.
+12. **Turn Coordinator: 30° Yukarı Eğik Gimbal Ekseni**: Eğik eksenin hem yaw hem roll algılaması.
+13. **Turn Coordinator: Sektör-Pinyon Dişlisi ve Cam Damper**: Sektör-pinyon aktarımı, cam piston damper ve PCB motoru.
+14. **Elektrik Kesintisi ve 'OFF' Uyarı Bayrağı (Red Flag)**: DC kesintisinde bayrağın inmesi, ibrenin merkeze düşmesi; topun elektrikten bağımsız çalışmaya devam etmesi.
+
+> İpucu: Sunum dışında sol dönüş için `3`, kanatlar düzken sadece rudder etkisi için `7` tuşunu kullanabilirsiniz.
 
 ---
 
@@ -111,13 +118,14 @@ https://emirhnkoc.github.io/tsi-simulator/?s=roll&view=mechanism&mech=tc&panel=0
 |---|---|---|
 | `s` | `level`, `stdR`, `stdL`, `slip`, `skid`, `roll`, `rudder` | Başlangıç uçuş senaryosu |
 | `view` | `aircraft`, `mechanism` | 3D Uçak veya Mekanizma ekranı |
-| `mech` | `ts`, `tc` | Turn & Slip veya Turn Coordinator mekanizması |
-| `cam` | `tail`, `top`, `orbit` | Kamera açısı |
+| `mech` | `tns`, `tc` | Turn & Slip veya Turn Coordinator mekanizması |
+| `cam` | `chase`, `top`, `orbit` | Kamera açısı (arkadan, üstten, serbest yörünge) |
 | `panel` | `0`, `1` | Alt kontrol panelinin gizli/açık olması |
 | `present` | `1` | Doğrudan Sunum Modunda başlatır |
-| `step` | `1` - `15` | Sunum modundaki belirli adıma atlar |
+| `step` | `1` - `14` | Sunum modundaki belirli adıma atlar |
 | `pause` | `1` | Simülasyonu duraklatılmış başlatır |
-| `t` | `sayı (saniye)` | Simülasyonu belirtilen saniye kadar ilerletip açar |
+| `power` | `0`, `1` | DC elektriğini kapatır / açar (varsayılan `1`) |
+| `t` | `0` - `600` (saniye) | Simülasyonu belirtilen süre kadar ilerletip açar; sunum adımlarında yok sayılır |
 
 ---
 

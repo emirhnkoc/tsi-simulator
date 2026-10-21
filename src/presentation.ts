@@ -39,7 +39,7 @@ function turnCycleScript(period = 9): (m: FlightModel) => void {
   };
 }
 
-/** Sınıf sunumu turu: 1. Perde Uçuş Fiziği (1-7), 2. Perde Sinematik Mekanizma Turu (8-13). */
+/** Sınıf sunumu turu: 1. Perde Uçuş Fiziği (1-7), 2. Perde Sinematik Mekanizma Turu (8-14). */
 export const PRES_STEPS: PresStep[] = [
   // ======================== 1. PERDE: UÇUŞ VE GÖSTERGELER ========================
   {
@@ -53,7 +53,7 @@ export const PRES_STEPS: PresStep[] = [
   {
     act: 'Uçuş',
     title: '2 · Standart Dönüş (2 MIN = 3°/s)',
-    text: "Saniyede 3° dönüş hızı (Rate One) ibreyi tam standart işaretine getirir. Bu hızla 360° tam tur 2 dakika sürer; kadrandaki '2 MIN' yazısı yatış açısını değil, bu dönüş süresini ifade eder.",
+    text: "Saniyede 3° dönüş hızı (Rate One) ibreyi tam standart işaretine getirir. Bu hızla 360° tam tur 2 dakika sürer; kadrandaki '2 MIN' yazısı yatış açısını değil, bu dönüş süresini ifade eder. Sol dönüş simetriktir; 3 tuşuyla aynı davranışı görebilirsiniz.",
     scenario: 'stdR',
     cam: 'chase',
     view: 'aircraft',
@@ -61,18 +61,25 @@ export const PRES_STEPS: PresStep[] = [
   {
     act: 'Uçuş',
     title: '3 · Kritik Yanılgı: Yatış Açısı ≠ Dönüş Hızı',
-    text: "Kadrandaki 'NO PITCH INFORMATION' uyarısına dikkat edin: Hız 75 kt'tan 165 kt'a çıkarken 3°/s dönüşü korumak için gereken yatış açısı 11°'den 23°'ye iki katına çıkar; fakat uçak silüeti aynı standart işarette sabit kalır!",
+    text: "Kadrandaki 'NO PITCH INFORMATION' uyarısına dikkat edin: 3°/s dönüşü korumak için 75 kt'ta yatış yaklaşık 12°, 165 kt'ta ise yaklaşık 24° gerekir; yani yatış açısı iki katına çıkar. Standart işaret aynı kalır; değişen yatış açısıdır. Hız geçişlerinde TC roll nedeniyle kısa süre sapabilir, oturunca yine standart işareti gösterir.",
     cam: 'chase',
     view: 'aircraft',
     customApply: (m) => {
       m.rollRateLimit = 18;
       m.target.rudder = 0;
+      m.target.speed = 75;
+      m.target.bank = stdBank(m.speed);
       let t = 0;
       m.script = (mm, dt) => {
         t += dt;
-        // Hızı 75 kt ile 165 kt arasında yumuşakça değiştirirken standart dönüş yatışını koru
-        const wave = Math.sin((t * Math.PI * 2) / 8);
-        mm.target.speed = 120 + wave * 45;
+        // 75 kt ve 165 kt'ta 4'er sn bekle, aralarda 2 sn'lik yumuşak geçiş yap.
+        const phase = t % 12;
+        let u: number;
+        if (phase < 4) u = 0;
+        else if (phase < 6) u = (phase - 4) / 2;
+        else if (phase < 10) u = 1;
+        else u = 1 - (phase - 10) / 2;
+        mm.target.speed = 75 + 90 * u;
         mm.target.bank = stdBank(mm.speed);
         return true;
       };
@@ -89,22 +96,24 @@ export const PRES_STEPS: PresStep[] = [
   {
     act: 'Uçuş',
     title: "5 · Slip (İçe Kayma) ve 'Step on the Ball'",
-    text: "Yatış fazla, rudder yetersiz olduğunda yerçekimi baskın gelir ve top dönüşün içine (sağa) düşer. Düzeltmek için 'topun üzerine basılır' (top yönünde rudder verilir) ve top merkeze döner.",
+    text: "Ters rudder uygulandığında yaw, yatışın gerektirdiği koordineli dönüş hızının altında kalır ve top dönüşün içine (sağa) kayar. Düzeltmek için 'topun üzerine basılır' (top yönünde rudder verilir) ve top merkeze döner; bank sabit kalır, dönüş hızı artar.",
     cam: 'chase',
     view: 'aircraft',
     customApply: (m) => {
       m.rollRateLimit = 15;
       m.target.speed = 100;
+      m.target.bank = stdBank(m.target.speed);
+      m.target.rudder = -0.55;
       let t = 0;
       m.script = (mm, dt) => {
         t = (t + dt) % 9.0;
         const sb = stdBank(mm.target.speed);
         if (t < 4.8) {
-          // Önce belirgin slip göster (top sağda)
-          mm.target.bank = sb + 10;
+          // Ters rudder: top sağda (slip)
+          mm.target.bank = sb;
           mm.target.rudder = -0.55;
         } else {
-          // Sonra 'step on the ball' ile rudder düzeltmesi uygula -> Koordineli!
+          // 'Step on the ball': bank sabit, rudder top yönünde (sağa) sıfırlanır
           mm.target.bank = sb;
           mm.target.rudder = 0;
         }
@@ -115,7 +124,7 @@ export const PRES_STEPS: PresStep[] = [
   {
     act: 'Uçuş',
     title: '6 · Skid (Dışa Savrulma)',
-    text: 'Yatışa göre fazla rudder verildiğinde merkezkaç kuvveti ağır basar ve top dönüşün dışına (sola) savrulur. Özellikle alçak irtifa dönüşlerinde iç kanadın stall olmasına yol açabileceği için çok tehlikelidir.',
+    text: 'Yatışa göre fazla rudder verildiğinde merkezkaç kuvveti ağır basar ve top dönüşün dışına (sola) savrulur. Özellikle alçak irtifa dönüşlerinde iç kanadın stall olmasına yol açabileceği için çok tehlikelidir. Kanatlar düzken sadece rudder etkisini 7 tuşuyla görebilirsiniz.',
     scenario: 'skid',
     cam: 'chase',
     view: 'aircraft',
