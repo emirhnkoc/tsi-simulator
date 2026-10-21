@@ -14,17 +14,23 @@
 }
 
 * { box-sizing: border-box; }
-html, body { margin: 0; height: 100%; overflow: hidden; }
-button { font: inherit; color: inherit; cursor: pointer; }
+html { -webkit-text-size-adjust: 100%; }
+html, body { margin: 0; height: 100%; overflow: hidden; overscroll-behavior: none; }
+button { font: inherit; color: inherit; cursor: pointer; touch-action: manipulation; }
 .hidden { display: none !important; }
+.lbl-short { display: none; }
 
 #app {
   height: 100vh;
+  height: 100dvh;
+  width: 100%;
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   grid-template-rows: 1fr auto;
 }
 
 #top {
+  min-width: 0;
   min-height: 0;
   display: grid;
   grid-template-columns: 1fr auto;
@@ -37,10 +43,35 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .label-layer { position: absolute; inset: 0; pointer-events: none; }
 
 .overlay { position: absolute; z-index: 5; display: flex; gap: 8px; }
-.overlay.tl { top: 12px; left: 12px; }
-.overlay.tr { top: 12px; right: 12px; }
 .overlay.bl { bottom: 12px; left: 12px; }
 .overlay.br { bottom: 12px; right: 12px; }
+
+/* Üst araç çubuğu: dar ekranlarda düzgün sarılabilmesi için tek kapsayıcı */
+#topbar {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  right: 12px;
+  z-index: 6;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  pointer-events: none;
+}
+#topbar > .tb-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+  pointer-events: auto;
+}
+#topbar > .tb-right {
+  justify-content: flex-end;
+  margin-left: auto;
+  max-width: 100%;
+}
 
 .seg {
   display: inline-flex;
@@ -281,3 +312,193 @@ input[type='range'] { width: 100%; accent-color: var(--accent); }
 #app.presenting .status { font-size: 32px; padding: 8px 20px; }
 #app.presenting .label3d { font-size: 16px; }
 
+
+/* ---- Duyarlı yerleşim: mobil (dikey) ---- */
+@media (max-width: 900px) and (min-height: 501px) {
+  #top {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) auto;
+  }
+
+  #gauges {
+    width: 100%;
+    min-width: 0;
+    height: clamp(96px, 17vh, 160px);
+    flex-direction: row;
+    align-items: stretch;
+    justify-content: center;
+    gap: 8px;
+    padding: 4px 10px;
+    border-left: 0;
+    border-top: 1px solid var(--line);
+    background: radial-gradient(circle at 50% 0%, #23282f, #12151a);
+    overflow: hidden;
+  }
+  #app.panel-hidden #gauges,
+  #app.presenting #gauges { width: 100%; height: clamp(120px, 26vh, 220px); }
+
+  .gauge { flex: 1 1 0; min-width: 0; max-width: 48%; }
+  .gauge-host { min-width: 0; overflow: hidden; }
+  .gauge figcaption {
+    max-width: 100%;
+    font-size: 11px;
+    letter-spacing: .4px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  #panel {
+    max-height: 42vh;
+    padding: 8px 10px calc(8px + env(safe-area-inset-bottom));
+    gap: 8px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+  }
+
+  #scenarios {
+    flex-wrap: nowrap;
+    gap: 6px;
+    overflow-x: auto;
+    padding-bottom: 2px;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+  #scenarios::-webkit-scrollbar { display: none; }
+  #scenarios button { flex: 0 0 auto; padding: 8px 11px; font-size: 13px; white-space: nowrap; }
+  #scenarios button kbd { font-size: 10px; padding: 0 4px; margin-right: 4px; }
+
+  #controls { grid-template-columns: minmax(0, 1fr); gap: 10px; }
+  .sliders { gap: 4px; }
+  .sliders label { grid-template-columns: 108px minmax(0, 1fr); gap: 8px; font-size: 13px; }
+  .sliders small { display: none; }
+  input[type='range'] { height: 26px; margin: 0; }
+
+  .playback { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+  .playback button { padding: 9px 8px; font-size: 13px; text-align: center; }
+
+  .readouts { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px 8px; }
+  .readouts span { font-size: 10.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .readouts b { font-size: 15px; white-space: nowrap; }
+
+  #topbar {
+    top: 8px;
+    left: 8px;
+    right: 8px;
+    gap: 4px;
+    flex-wrap: nowrap;
+    align-items: center;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+  #topbar::-webkit-scrollbar { display: none; }
+  #topbar > .tb-group { flex: 0 0 auto; flex-wrap: nowrap; gap: 4px; }
+  #topbar > .tb-right { margin-left: auto; }
+  .seg { flex: 0 0 auto; padding: 2px; border-radius: 9px; }
+  .seg button { padding: 5px 6px; font-size: 11.5px; border-radius: 7px; white-space: nowrap; }
+  .power-word { display: none; }
+  .lbl-full { display: none; }
+  .lbl-short { display: inline; }
+  #mech-tabs button,
+  #mech-opts button,
+  #power-opts button { padding: 5px 6px; font-size: 11px; }
+  .label3d { font-size: 11px; padding: 2px 6px; }
+
+  .overlay.bl { bottom: 8px; left: 8px; }
+  .overlay.br { bottom: 8px; right: 8px; }
+  .status { font-size: 15px; padding: 5px 10px; border-radius: 8px; border-width: 1.5px; }
+  .badge { font-size: 12px; padding: 5px 9px; border-radius: 8px; }
+
+  /* Sunum modu küçük ekranda taşmasın */
+  #app.presenting .overlay.bl,
+  #app.presenting .overlay.br { display: none; }
+  .overlay.bc { left: 8px; right: 8px; bottom: 8px; transform: none; justify-content: center; }
+  #pres-bar { width: 100%; max-height: 34vh; overflow-y: auto; padding: 10px 12px 11px; border-radius: 12px; }
+  #pres-bar .pres-head { gap: 6px; }
+  #pres-bar b { font-size: 16px; }
+  #pres-bar #pres-count { font-size: 12px; }
+  #pres-bar p { font-size: 13px; line-height: 1.45; margin: 6px 0 8px; }
+  #pres-bar .pres-nav { gap: 6px; flex-wrap: wrap; justify-content: center; }
+  #pres-bar .pres-nav button { padding: 7px 10px; font-size: 12px; }
+  #pres-bar .pres-dots { order: 3; flex-basis: 100%; gap: 5px; margin-top: 2px; }
+  #b-show { bottom: calc(10px + env(safe-area-inset-bottom)); }
+}
+
+@media (max-width: 380px) and (min-height: 501px) {
+  .sliders label { grid-template-columns: 94px minmax(0, 1fr); }
+  .readouts b { font-size: 13.5px; }
+  .seg button { padding: 4px 5px; font-size: 11px; }
+}
+
+@media (max-width: 340px) and (min-height: 501px) {
+  #topbar,
+  #topbar > .tb-group { gap: 2px; }
+  .seg { padding: 1px; }
+  .seg button { padding: 4px 5px; font-size: 10.5px; }
+  /* Çok dar ekranda yer açmak için yalnızca simge; OFF durumu kırmızı renkle gösterilir */
+  #b-power-state { display: none; }
+}
+
+/* ---- Duyarlı yerleşim: yatay telefon ---- */
+@media (max-height: 500px) {
+  #gauges { width: min(40vh, 30vw); gap: 2px; padding: 4px 8px; }
+  #app.panel-hidden #gauges { width: min(44vh, 34vw); }
+  .gauge figcaption { font-size: 10px; }
+
+  #panel {
+    max-height: 48vh;
+    gap: 5px;
+    padding: 6px 10px calc(6px + env(safe-area-inset-bottom));
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+  }
+  #scenarios { flex-wrap: nowrap; gap: 5px; overflow-x: auto; scrollbar-width: none; }
+  #scenarios::-webkit-scrollbar { display: none; }
+  #scenarios button { flex: 0 0 auto; padding: 6px 9px; font-size: 12px; white-space: nowrap; }
+  #scenarios button kbd { font-size: 9.5px; }
+
+  #controls { grid-template-columns: minmax(210px, 1.3fr) auto minmax(240px, 1.5fr); gap: 10px; }
+  .sliders { gap: 2px; }
+  .sliders label { grid-template-columns: 138px minmax(0, 1fr); gap: 6px; font-size: 12px; }
+  .sliders small { display: none; }
+  input[type='range'] { height: 22px; margin: 0; }
+  .playback { gap: 4px; }
+  .playback button { padding: 5px 9px; font-size: 12px; }
+  .readouts { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 2px 8px; }
+  .readouts span { font-size: 10px; }
+  .readouts b { font-size: 14px; }
+
+  #topbar { top: 8px; left: 8px; right: 8px; gap: 6px; }
+  #topbar > .tb-group { gap: 6px; }
+  .seg { padding: 2px; }
+  .seg button { padding: 5px 9px; font-size: 12px; }
+  .overlay.bl { bottom: 8px; left: 8px; }
+  .overlay.br { bottom: 8px; right: 8px; }
+  .status { font-size: 16px; padding: 4px 10px; }
+  .badge { font-size: 12px; padding: 4px 8px; }
+  .overlay.bc { bottom: 8px; }
+  #pres-bar { width: min(700px, 88vw); padding: 7px 14px 8px; }
+  #pres-bar b { font-size: 16px; }
+  #pres-bar p { font-size: 13px; line-height: 1.4; margin: 5px 0 6px; }
+  #pres-bar .pres-nav button { padding: 5px 10px; font-size: 12px; }
+}
+
+@media (max-height: 500px) and (max-width: 760px) {
+  #controls { grid-template-columns: minmax(0, 1fr) auto; }
+  .readouts { grid-column: 1 / -1; }
+}
+
+/* ---- Dokunmatik: daha büyük hedefler ---- */
+@media (pointer: coarse) {
+  input[type='range'] { height: 30px; }
+  .seg button,
+  .playback button,
+  #scenarios button,
+  #pres-bar .pres-nav button { min-height: 34px; }
+  #pres-bar .pres-dot { min-height: 0; }
+}

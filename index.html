@@ -2,7 +2,14 @@
 <html lang="tr">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, viewport-fit=cover"
+    />
+    <meta name="theme-color" content="#0f1216" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <title>Turn Coordinator &amp; Turn-and-Slip Simülatörü</title>
   </head>
   <body>
@@ -10,27 +17,32 @@
       <div id="top">
         <section id="scene">
           <div id="canvas-host"></div>
-          <div class="overlay tl">
-            <div class="seg" id="view-tabs">
-              <button data-view="aircraft" class="active">3D Uçak</button>
-              <button data-view="mechanism">Mekanizma</button>
+          <div id="topbar">
+            <div class="tb-group tb-left">
+              <div class="seg" id="view-tabs">
+                <button data-view="aircraft" class="active">3D Uçak</button>
+                <button data-view="mechanism">Mekanizma</button>
+              </div>
             </div>
-          </div>
-          <div class="overlay tr">
-            <div class="seg" id="cam-tabs">
-              <button data-cam="chase" class="active">Arkadan</button>
-              <button data-cam="top">Üstten</button>
-              <button data-cam="orbit">Yörünge</button>
-            </div>
-            <div class="seg hidden" id="mech-tabs">
-              <button data-mech="tns" class="active">Turn &amp; Slip</button>
-              <button data-mech="tc">Turn Coordinator</button>
-            </div>
-            <div class="seg hidden" id="mech-opts">
-              <button id="b-labels" title="Parça isimlerini aç/kapat (L)">Parça İsimleri</button>
-            </div>
-            <div class="seg" id="power-opts">
-              <button id="b-power" title="DC elektrik beslemesini aç/kapat (F)">⚡ Elektrik: Açık</button>
+            <div class="tb-group tb-right">
+              <div class="seg" id="cam-tabs">
+                <button data-cam="chase" class="active">Arkadan</button>
+                <button data-cam="top">Üstten</button>
+                <button data-cam="orbit">Yörünge</button>
+              </div>
+              <div class="seg hidden" id="mech-tabs">
+                <button data-mech="tns" class="active" title="Turn &amp; Slip"><span class="lbl-full">Turn &amp; Slip</span><span class="lbl-short">T&amp;S</span></button>
+                <button data-mech="tc" title="Turn Coordinator"><span class="lbl-full">Turn Coordinator</span><span class="lbl-short">TC</span></button>
+              </div>
+              <div class="seg hidden" id="mech-opts">
+                <button id="b-labels" title="Parça isimlerini aç/kapat (L)"><span class="lbl-full">Parça İsimleri</span><span class="lbl-short">İsimler</span></button>
+              </div>
+              <div class="seg" id="power-opts">
+                <button id="b-power" title="DC elektrik beslemesini aç/kapat (F)">
+                  ⚡<span class="power-word"> Elektrik:</span>
+                  <span id="b-power-state">Açık</span>
+                </button>
+              </div>
             </div>
           </div>
           <div class="overlay bl">

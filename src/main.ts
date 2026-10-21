@@ -94,10 +94,11 @@ function setLabels(v: boolean) {
 bLabels.addEventListener('click', () => setLabels(!mech.labelsVisible));
 
 const bPower = $('#b-power');
+const bPowerState = $('#b-power-state');
 function syncPowerUI() {
   const on = model.electricPower;
   bPower.classList.toggle('off', !on);
-  bPower.textContent = on ? '⚡ Elektrik: Açık' : '⚡ Elektrik: OFF';
+  bPowerState.textContent = on ? 'Açık' : 'OFF';
 }
 function togglePower(force?: boolean) {
   model.electricPower = force ?? !model.electricPower;
